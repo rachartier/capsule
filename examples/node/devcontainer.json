@@ -1,0 +1,11 @@
+{
+  "name": "Node.js",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "upgradePackages": true
+    }
+  },
+  "postCreateCommand": "[ -f package.json ] && npm install || true"
+}

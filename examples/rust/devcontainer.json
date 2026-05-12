@@ -1,0 +1,11 @@
+{
+  "name": "Rust",
+  "image": "mcr.microsoft.com/devcontainers/rust:latest",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "upgradePackages": true
+    }
+  },
+  "postCreateCommand": "rustup component add clippy rustfmt rust-src"
+}
