@@ -1,4 +1,9 @@
-# capsule
+<p align="center">
+    <img width="220" height="220" aligh="center" alt="image" src="https://github.com/user-attachments/assets/f50dadd4-66f2-4402-9ee5-57f2b86d1521" />
+</p>
+
+
+# Capsule
 
 A CLI for managing [devcontainer](https://containers.dev) templates. Save a devcontainer setup once, reuse it in any project.
 
