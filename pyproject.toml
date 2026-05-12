@@ -9,6 +9,11 @@ dependencies = [
     "rich>=13",
 ]
 
+[project.optional-dependencies]
+build = [
+    "pyinstaller>=6",
+]
+
 [project.scripts]
 capsule = "capsule.__main__:main"
 

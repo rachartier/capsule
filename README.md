@@ -29,6 +29,29 @@ npm install -g @devcontainers/cli
 
 Requires Python 3.13+, [uv](https://github.com/astral-sh/uv), and the [devcontainer CLI](https://github.com/devcontainers/cli).
 
+### Getting templates
+
+The repo ships example templates for C, C++, Node, Python, and Rust under `examples/`. Add them all at once:
+
+```sh
+for d in examples/c examples/cpp examples/node examples/python examples/rust; do
+    capsule add "$d"
+done
+```
+
+Or add just the ones you need:
+
+```sh
+capsule add examples/python
+capsule add examples/rust
+```
+
+To add your own template, point `capsule add` at any directory that contains a `devcontainer.json`:
+
+```sh
+capsule add ~/projects/myapp/.devcontainer --name myapp
+```
+
 ## Configure
 
 Create `~/.config/capsule/config.toml`. A full example lives at [`examples/config.toml`](examples/config.toml).

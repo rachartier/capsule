@@ -1,0 +1,71 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            target: linux-amd64
+          - os: ubuntu-24.04-arm
+            arch: aarch64
+            target: linux-arm64
+          - os: windows-latest
+            arch: x86_64
+            target: windows-amd64
+          - os: macos-latest
+            arch: x86_64
+            target: macos-amd64
+          - os: macos-latest
+            arch: aarch64
+            target: macos-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --extra build
+
+      - name: Build binary
+        run: >
+          uv run pyinstaller
+          --onefile
+          --name capsule-${{ matrix.target }}
+          --collect-all capsule
+          src/capsule/__main__.py
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: capsule-${{ matrix.target }}
+          path: dist/capsule-${{ matrix.target }}*
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
