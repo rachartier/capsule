@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from capsule.app import _default_template_name
 from capsule.sources import (
     GitSource,
     GitSubpathNotFound,
@@ -11,7 +12,6 @@ from capsule.sources import (
     RemoteFetchError,
     materialize,
     parse_source,
-    repo_name,
 )
 
 
@@ -135,16 +135,19 @@ def test_local_absolute(tmp_path: Path):
     assert s == LocalSource(path=tmp_path)
 
 
-def test_repo_name_dotgit():
-    assert repo_name("https://github.com/owner/myrepo.git") == "myrepo"
+def test_default_name_git_url_dotgit():
+    s = GitSource(url="https://github.com/owner/myrepo.git", ref=None, subpath=None)
+    assert _default_template_name(s) == "myrepo"
 
 
-def test_repo_name_no_dotgit():
-    assert repo_name("https://github.com/owner/myrepo") == "myrepo"
+def test_default_name_git_url_no_dotgit():
+    s = GitSource(url="https://github.com/owner/myrepo", ref=None, subpath=None)
+    assert _default_template_name(s) == "myrepo"
 
 
-def test_repo_name_trailing_slash():
-    assert repo_name("https://github.com/owner/myrepo/") == "myrepo"
+def test_default_name_git_url_trailing_slash():
+    s = GitSource(url="https://github.com/owner/myrepo/", ref=None, subpath=None)
+    assert _default_template_name(s) == "myrepo"
 
 
 def test_materialize_local(tmp_path: Path):

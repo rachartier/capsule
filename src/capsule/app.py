@@ -2,7 +2,6 @@ import logging
 import os
 import shutil
 import subprocess
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -27,7 +26,6 @@ from capsule.sources import (
     RemoteFetchError,
     materialize,
     parse_source,
-    repo_name,
 )
 from capsule.templates import (
     InvalidJSON,
@@ -93,10 +91,10 @@ def cmd_add(
     """Add a new template from a local folder or a git remote."""
     parsed = parse_source(source)
     if isinstance(parsed, GitSource):
-        parsed = replace(
-            parsed,
-            ref=ref if ref is not None else parsed.ref,
-            subpath=subpath if subpath is not None else parsed.subpath,
+        parsed = GitSource(
+            parsed.url,
+            ref if ref is not None else parsed.ref,
+            subpath if subpath is not None else parsed.subpath,
         )
     elif ref is not None or subpath is not None:
         con.error("--ref and --subpath only apply to git remote sources.")
@@ -104,9 +102,16 @@ def cmd_add(
 
     try:
         with materialize(parsed) as local_path:
-            template_name = name or _default_template_name(parsed)
-            dest = add_template(local_path, template_name)
-        con.success(f"Template [bold]{template_name}[/bold] added at {dest}")
+            if (local_path / "devcontainer.json").exists():
+                template_name = name or _default_template_name(parsed)
+                dest = add_template(local_path, template_name)
+                con.success(f"Template [bold]{template_name}[/bold] added at {dest}")
+            else:
+                if name is not None:
+                    con.error("--name cannot be used when adding a directory of templates.")
+                    raise typer.Exit(1)
+                if _add_all_templates(local_path):
+                    raise typer.Exit(1)
     except TemplateAlreadyExists as e:
         con.error(str(e), "Run `capsule list` to see existing templates.")
         raise typer.Exit(1) from e
@@ -129,7 +134,42 @@ def _default_template_name(source: LocalSource | GitSource) -> str:
         return source.path.name
     if source.subpath:
         return Path(source.subpath).name
-    return repo_name(source.url)
+    last = source.url.rstrip("/").rsplit("/", 1)[-1]
+    return last[:-4] if last.endswith(".git") else last
+
+
+def _add_all_templates(directory: Path) -> bool:
+    """Add every subdirectory of *directory* that contains a devcontainer.json.
+
+    Returns True if any hard errors occurred (invalid JSON, permission denied).
+    TemplateAlreadyExists is treated as a soft skip, not an error.
+    """
+    candidates = sorted(d for d in directory.iterdir() if d.is_dir() and (d / "devcontainer.json").exists())
+    if not candidates:
+        con.error(f"No template directories found in {directory}.")
+        return True
+
+    added: list[str] = []
+    skipped: list[str] = []
+    errors: list[tuple[str, str]] = []
+
+    for d in candidates:
+        try:
+            add_template(d, d.name)
+            added.append(d.name)
+        except TemplateAlreadyExists:
+            skipped.append(d.name)
+        except (FileNotFoundError, MissingDevcontainer, InvalidJSON, PermissionError) as e:
+            errors.append((d.name, str(e)))
+
+    for n in added:
+        con.success(f"Template [bold]{n}[/bold] added")
+    for n in skipped:
+        con.info(f"Template [bold]{n}[/bold] already exists, skipped")
+    for n, msg in errors:
+        con.error(f"[bold]{n}[/bold]: {msg}")
+
+    return bool(errors)
 
 
 @app.command("delete")

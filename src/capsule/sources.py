@@ -2,8 +2,6 @@ import logging
 import re
 import subprocess
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,92 +37,59 @@ _SCP_GIT_RE = re.compile(r"^[\w.-]+@[\w.-]+:[\w./~-]+$")
 
 def parse_source(raw: str) -> LocalSource | GitSource:
     if raw.startswith("gh:"):
-        return _parse_gh_shorthand(raw[3:])
+        owner, slash, rest = raw[3:].partition("/")
+        if not slash or not owner:
+            raise RemoteFetchError(f"Invalid gh: shorthand '{raw}'. Expected 'gh:owner/repo[@ref][/subpath]'.")
+        repo_ref, _, subpath_str = rest.partition("/")
+        repo, _, ref_str = repo_ref.partition("@")
+        if not repo:
+            raise RemoteFetchError(f"Invalid gh: shorthand '{raw}'. Repo name is empty.")
+        return GitSource(
+            url=f"https://github.com/{owner}/{repo}.git",
+            ref=ref_str or None,
+            subpath=subpath_str or None,
+        )
 
-    if _looks_like_git_url(raw):
-        gh = _try_parse_github_url(raw)
-        if gh is not None:
-            return gh
+    if m := _GH_URL_RE.match(raw):
+        owner, repo = m.group("owner"), m.group("repo")
+        return GitSource(
+            url=f"https://github.com/{owner}/{repo}.git",
+            ref=m.group("ref"),
+            subpath=m.group("subpath"),
+        )
+
+    if raw.startswith(("http://", "https://", "ssh://", "git://", "git+")) or raw.endswith(".git") or _SCP_GIT_RE.match(raw):
         return GitSource(url=raw, ref=None, subpath=None)
 
     return LocalSource(path=Path(raw).expanduser().resolve())
 
 
-def _parse_gh_shorthand(rest: str) -> GitSource:
-    if not rest:
-        raise RemoteFetchError("gh: shorthand requires 'owner/repo[@ref][/subpath]'")
+class materialize:
+    def __init__(self, source: LocalSource | GitSource) -> None:
+        self._source = source
+        self._tmp: tempfile.TemporaryDirectory[str] | None = None
 
-    parts = rest.split("/", 2)
-    if len(parts) < 2 or not parts[0] or not parts[1]:
-        raise RemoteFetchError(
-            f"Invalid gh: shorthand 'gh:{rest}'. Expected 'gh:owner/repo[@ref][/subpath]'."
-        )
+    def __enter__(self) -> Path:
+        if isinstance(self._source, LocalSource):
+            return self._source.path
+        self._tmp = tempfile.TemporaryDirectory(prefix="capsule-fetch-")
+        tmp_path = Path(self._tmp.name) / "repo"
+        try:
+            _git_clone(self._source, tmp_path)
+            root = tmp_path / self._source.subpath if self._source.subpath else tmp_path
+            if not root.is_dir():
+                raise GitSubpathNotFound(
+                    f"Subpath {self._source.subpath!r} not found in {self._source.url}"
+                )
+            return root
+        except BaseException:
+            self._tmp.cleanup()
+            self._tmp = None
+            raise
 
-    owner = parts[0]
-    repo_part = parts[1]
-    subpath = parts[2] if len(parts) == 3 and parts[2] else None
-
-    if "@" in repo_part:
-        repo, ref = repo_part.split("@", 1)
-        ref = ref or None
-    else:
-        repo, ref = repo_part, None
-
-    if not repo:
-        raise RemoteFetchError(
-            f"Invalid gh: shorthand 'gh:{rest}'. Repo name is empty."
-        )
-
-    return GitSource(
-        url=f"https://github.com/{owner}/{repo}.git", ref=ref, subpath=subpath
-    )
-
-
-def _try_parse_github_url(raw: str) -> GitSource | None:
-    m = _GH_URL_RE.match(raw)
-    if not m:
-        return None
-    owner = m.group("owner")
-    repo = m.group("repo")
-    return GitSource(
-        url=f"https://github.com/{owner}/{repo}.git",
-        ref=m.group("ref"),
-        subpath=m.group("subpath"),
-    )
-
-
-def _looks_like_git_url(raw: str) -> bool:
-    if raw.startswith(("http://", "https://", "ssh://", "git://", "git+")):
-        return True
-    if raw.endswith(".git"):
-        return True
-    if _SCP_GIT_RE.match(raw):
-        return True
-    return False
-
-
-def repo_name(url: str) -> str:
-    last = url.rstrip("/").rsplit("/", 1)[-1]
-    if last.endswith(".git"):
-        last = last[:-4]
-    return last
-
-
-@contextmanager
-def materialize(source: LocalSource | GitSource) -> Iterator[Path]:
-    if isinstance(source, LocalSource):
-        yield source.path
-        return
-
-    with tempfile.TemporaryDirectory(prefix="capsule-fetch-") as tmp:
-        tmp_path = Path(tmp) / "repo"
-        _git_clone(source, tmp_path)
-        root = tmp_path / source.subpath if source.subpath else tmp_path
-        if not root.is_dir():
-            raise GitSubpathNotFound(
-                f"Subpath {source.subpath!r} not found in {source.url}"
-            )
-        yield root
+    def __exit__(self, *_: object) -> None:
+        if self._tmp is not None:
+            self._tmp.cleanup()
 
 
 def _git_clone(source: GitSource, dest: Path) -> None:

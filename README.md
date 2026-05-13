@@ -39,35 +39,36 @@ Requires Python 3.13+, [uv](https://github.com/astral-sh/uv), and the [devcontai
 
 ## Quick start
 
-The repo ships templates under `templates/`. Add them directly from GitHub without cloning first:
+Pull all shipped templates:
 
 ```sh
-# gh: shorthand, owner/repo[@ref][/subpath]
-capsule add gh:rachartier/capsule/templates/python
-capsule add gh:rachartier/capsule@main/templates/node
-
-# Full GitHub URL (branch/tag parsed automatically)
-capsule add https://github.com/rachartier/capsule/tree/main/templates/rust
-
-# Generic git remote with explicit flags
-capsule add https://github.com/rachartier/capsule.git --subpath templates/c --name c-template
-capsule add git@mygitlab.com:team/devcontainers.git --subpath python --ref stable
+capsule add gh:rachartier/capsule/templates
 ```
 
-Or add from a local directory containing a `devcontainer.json`:
-
-```sh
-capsule add templates/python
-capsule add ~/projects/myapp/.devcontainer --name myapp
-```
-
-Authentication uses your existing git setup (SSH keys, credential helpers, netrc) — no token configuration needed.
-
-Then run one from any project directory:
+Then run one from any project directory (in this example a python project):
 
 ```sh
 capsule run python
 ```
+
+### Adding individual templates
+
+Point at a single template directory — local, shorthand, or full URL:
+
+```sh
+capsule add gh:rachartier/capsule/templates/python
+capsule add https://github.com/rachartier/capsule/tree/main/templates/rust
+capsule add templates/python                              # local path
+capsule add ~/projects/myapp/.devcontainer --name myapp  # local, custom name
+```
+
+For generic git remotes use `--subpath` and `--ref`:
+
+```sh
+capsule add git@mygitlab.com:team/devcontainers.git --subpath python --ref stable
+```
+
+Authentication uses your existing git setup (SSH keys, credential helpers, netrc) — no token configuration needed.
 
 ## How `capsule run` works
 
