@@ -6,6 +6,9 @@
 # Capsule
 
 A CLI to manage [devcontainer](https://containers.dev) templates from one place. Add a template once, run it in any project with a single command.
+<p align="center">
+<img width="840" alt="capsule_demo" src="https://github.com/user-attachments/assets/9329ed8e-5da0-454d-8bfd-912bdca3f0fd" />
+</p>
 
 ```sh
 cd ~/projects/myapp
