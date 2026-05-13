@@ -291,6 +291,8 @@ def cmd_run(
     if config_path:
         exec_cmd.extend(["--config", config_path])
         exec_cmd.extend(["--id-label", f"capsule.workspace={cwd}"])
+    for k, v in cfg.env.items():
+        exec_cmd.extend(["--remote-env", f"{k}={v}"])
     exec_cmd.extend(["--", shell or cfg.shell])
 
     log.info("devcontainer exec: %s", " ".join(exec_cmd))

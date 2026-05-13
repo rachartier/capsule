@@ -101,7 +101,37 @@ Under the hood it calls `devcontainer up` to start the container and run its lif
 | `capsule export <template> [--output <dir>]` | Export a template as a `.zip` archive. |
 | `capsule config` | Show resolved config from `config.toml`. |
 
-### Examples
+## Troubleshooting
+
+### X11 graphics on WSL2
+
+Add the X11 socket mount and set `DISPLAY` in `~/.config/capsule/config.toml`.
+
+**WSLg** (Windows 11, built-in X server, `DISPLAY` is always `:0`):
+
+```toml
+[volumes]
+mounts = ["/tmp/.X11-unix:/tmp/.X11-unix"]
+
+[env]
+DISPLAY = ":0"
+WAYLAND_DISPLAY = "wayland-0"
+XDG_RUNTIME_DIR = "/mnt/wslg/runtime-dir"
+```
+
+**Legacy WSL2** (VcXsrv, X410, `DISPLAY` is a dynamic Windows host IP):
+
+```toml
+[volumes]
+mounts = ["/tmp/.X11-unix:/tmp/.X11-unix"]
+
+[env]
+DISPLAY = "$DISPLAY"
+```
+
+`$VAR` references in `[env]` values and mount source paths are expanded from the host shell at runtime, so `DISPLAY = "$DISPLAY"` forwards whatever value WSL2 set in the launching shell.
+
+## Examples
 
 ```sh
 capsule add ./my-devcontainer --name python-custom

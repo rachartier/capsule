@@ -1,3 +1,4 @@
+import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,14 +48,14 @@ def load_run_config() -> RunConfig:
     return RunConfig(
         mounts=list(volumes.get("mounts", [])),
         dotfiles=list(dotfiles.get("mounts", [])),
-        env={k: str(v) for k, v in env_section.items()},
+        env={k: os.path.expandvars(str(v)) for k, v in env_section.items()},
         shell=run_section.get("shell", "/bin/bash"),
     )
 
 
 def expand_mount(mount: str) -> str:
     parts = mount.split(":")
-    parts[0] = str(Path(parts[0]).expanduser())
+    parts[0] = str(Path(os.path.expandvars(parts[0])).expanduser())
     return ":".join(parts)
 
 
