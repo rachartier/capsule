@@ -191,8 +191,12 @@ shell = "/bin/bash"
 | `capsule view <template>` | Pretty-print a template's `devcontainer.json`. |
 | `capsule search <keyword>` | Case-insensitive search across all templates' `devcontainer.json`. |
 | `capsule update <path> [--name <n>]` | Replace the `devcontainer.json` in a stored template from a folder. |
+| `capsule rename <old> <new>` | Rename a stored template. |
 | `capsule delete <template> [--force]` | Delete a stored template. |
 | `capsule export <template> [--output <dir>]` | Export a template as a `.zip` archive. |
+| `capsule pull <template>` | Re-fetch a template from its recorded git source and replace it in the store. |
+| `capsule ps` | List all capsule devcontainers (running and stopped). |
+| `capsule stop [<workspace>] [--force] [--rm]` | Stop the devcontainer for the current directory or given workspace path. `--force` skips confirmation, `--rm` removes the container. |
 | `capsule config` | Show resolved config from `config.toml`. |
 
 ## Troubleshooting
