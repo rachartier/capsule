@@ -12,12 +12,11 @@ _GRN = "\033[32m"
 _BLU = "\033[34m"
 
 
-def _tty() -> bool:
-    return sys.stdout.isatty()
+_IS_TTY: bool = sys.stdout.isatty()
 
 
 def _c(*codes: str, text: str) -> str:
-    return ("".join(codes) + text + _RST) if _tty() else text
+    return ("".join(codes) + text + _RST) if _IS_TTY else text
 
 
 def error(msg: str, hint: str | None = None) -> None:

@@ -9,8 +9,6 @@ TEMPLATES_DIR = CONFIG_DIR / "templates"
 LOG_FILE = CONFIG_DIR / "capsule.log"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 
-TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
-
 
 def setup_logging() -> None:
     fmt = "[%(asctime)s] [%(levelname)s] %(message)s"

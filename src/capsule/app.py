@@ -12,13 +12,8 @@ from typing import Annotated
 import typer
 
 from capsule import console as con
-from capsule.config import CONFIG_FILE
-from capsule.run_config import (
-    RunConfig,
-    expand_mount,
-    load_run_config,
-    mount_to_devcontainer_format,
-)
+from capsule.config import CONFIG_FILE, TEMPLATES_DIR
+from capsule.run_config import RunConfig
 from capsule.sources import (
     GitSource,
     GitSubpathNotFound,
@@ -33,27 +28,42 @@ from capsule.templates import (
     NoProvenance,
     TemplateAlreadyExists,
     TemplateNotFound,
-    add_template,
-    delete_template,
-    export_template,
-    init_template,
-    list_templates,
-    load_provenance,
-    rename_template,
-    save_provenance,
-    search_templates,
-    update_template,
-    view_template,
+    TemplateStore,
 )
 
 app = typer.Typer(no_args_is_help=True)
 log = logging.getLogger(__name__)
+store = TemplateStore(TEMPLATES_DIR)
+
+
+@contextlib.contextmanager
+def _handle_errors():
+    try:
+        yield
+    except TemplateNotFound as e:
+        con.error(str(e), "Run `capsule list` to see available templates.")
+        raise typer.Exit(1) from e
+    except TemplateAlreadyExists as e:
+        con.error(str(e))
+        raise typer.Exit(1) from e
+    except FileExistsError as e:
+        con.error(str(e), "Use --force to overwrite.")
+        raise typer.Exit(1) from e
+    except NoProvenance as e:
+        con.error(str(e))
+        raise typer.Exit(1) from e
+    except (MissingDevcontainer, InvalidJSON, FileNotFoundError, RemoteFetchError, GitSubpathNotFound) as e:
+        con.error(str(e))
+        raise typer.Exit(1) from e
+    except PermissionError as e:
+        con.error(f"Permission denied: {e}")
+        raise typer.Exit(1) from e
 
 
 @app.command("list")
 def cmd_list() -> None:
     """List all available templates."""
-    entries = list_templates()
+    entries = store.list_templates()
     if not entries:
         con.info("No templates found. Use 'capsule add' to create one.")
         return
@@ -68,18 +78,14 @@ def cmd_list() -> None:
 def cmd_add(
     source: Annotated[
         str,
-        typer.Argument(
-            help="Local path, gh:owner/repo[@ref][/subpath], or a git remote URL"
-        ),
+        typer.Argument(help="Local path, gh:owner/repo[@ref][/subpath], or a git remote URL"),
     ],
     name: Annotated[
         str | None, typer.Option("--name", "-n", help="Override template name")
     ] = None,
     ref: Annotated[
         str | None,
-        typer.Option(
-            "--ref", help="Git ref (branch/tag/sha). Overrides any inline ref."
-        ),
+        typer.Option("--ref", help="Git ref (branch/tag/sha). Overrides any inline ref."),
     ] = None,
     subpath: Annotated[
         str | None,
@@ -101,13 +107,12 @@ def cmd_add(
         con.error("--ref and --subpath only apply to git remote sources.")
         raise typer.Exit(1)
 
-    try:
-        with materialize(parsed) as local_path:
+    with _handle_errors(), materialize(parsed) as local_path:
             if (local_path / "devcontainer.json").exists():
                 template_name = name or _default_template_name(parsed)
-                dest = add_template(local_path, template_name)
+                dest = store.add(local_path, template_name)
                 if isinstance(parsed, GitSource):
-                    save_provenance(template_name, parsed.url, parsed.ref, parsed.subpath)
+                    store.save_provenance(template_name, parsed.url, parsed.ref, parsed.subpath)
                 con.success(f"Template '{template_name}' added at {dest}")
             else:
                 if name is not None:
@@ -115,21 +120,6 @@ def cmd_add(
                     raise typer.Exit(1)
                 if _add_all_templates(local_path):
                     raise typer.Exit(1)
-    except TemplateAlreadyExists as e:
-        con.error(str(e), "Run `capsule list` to see existing templates.")
-        raise typer.Exit(1) from e
-    except PermissionError as e:
-        con.error(f"Permission denied: {e}")
-        raise typer.Exit(1) from e
-    except (
-        FileNotFoundError,
-        MissingDevcontainer,
-        InvalidJSON,
-        RemoteFetchError,
-        GitSubpathNotFound,
-    ) as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
 
 
 def _default_template_name(source: LocalSource | GitSource) -> str:
@@ -141,13 +131,11 @@ def _default_template_name(source: LocalSource | GitSource) -> str:
     return last[:-4] if last.endswith(".git") else last
 
 
-def _add_all_templates(directory: Path) -> bool:
-    """Add every subdirectory of *directory* that contains a devcontainer.json.
-
-    Returns True if any hard errors occurred (invalid JSON, permission denied).
-    TemplateAlreadyExists is treated as a soft skip, not an error.
-    """
-    candidates = sorted(d for d in directory.iterdir() if d.is_dir() and (d / "devcontainer.json").exists())
+def _add_all_templates(directory: Path, template_store: TemplateStore | None = None) -> bool:
+    s = template_store or store
+    candidates = sorted(
+        d for d in directory.iterdir() if d.is_dir() and (d / "devcontainer.json").exists()
+    )
     if not candidates:
         con.error(f"No template directories found in {directory}.")
         return True
@@ -158,7 +146,7 @@ def _add_all_templates(directory: Path) -> bool:
 
     for d in candidates:
         try:
-            add_template(d, d.name)
+            s.add(d, d.name)
             added.append(d.name)
         except TemplateAlreadyExists:
             skipped.append(d.name)
@@ -177,34 +165,21 @@ def _add_all_templates(directory: Path) -> bool:
 
 @app.command("delete")
 def cmd_delete(
-    template_name: Annotated[
-        str, typer.Argument(help="Name of the template to delete")
-    ],
-    force: Annotated[
-        bool, typer.Option("--force", "-f", help="Skip confirmation prompt")
-    ] = False,
+    template_name: Annotated[str, typer.Argument(help="Name of the template to delete")],
+    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation prompt")] = False,
 ) -> None:
     """Delete a template."""
-    if not force:
-        if not con.confirm(f"Delete template '{template_name}'?"):
-            con.info("Aborted.")
-            return
-    try:
-        delete_template(template_name)
+    if not force and not con.confirm(f"Delete template '{template_name}'?"):
+        con.info("Aborted.")
+        return
+    with _handle_errors():
+        store.delete(template_name)
         con.success(f"Template '{template_name}' deleted.")
-    except TemplateNotFound as e:
-        con.error(str(e), "Run `capsule list` to see available templates.")
-        raise typer.Exit(1) from e
-    except PermissionError as e:
-        con.error(f"Permission denied: {e}")
-        raise typer.Exit(1) from e
 
 
 @app.command("update")
 def cmd_update(
-    source_path: Annotated[
-        str, typer.Argument(help="Path to the source devcontainer folder")
-    ],
+    source_path: Annotated[str, typer.Argument(help="Path to the source devcontainer folder")],
     name: Annotated[
         str | None, typer.Option("--name", "-n", help="Override template name")
     ] = None,
@@ -212,18 +187,9 @@ def cmd_update(
     """Replace the devcontainer.json in an existing template from a folder."""
     source = Path(source_path).expanduser().resolve()
     template_name = name or source.name
-    try:
-        update_template(template_name, source)
+    with _handle_errors():
+        store.update(template_name, source)
         con.success(f"Template '{template_name}' updated.")
-    except TemplateNotFound as e:
-        con.error(str(e), "Run `capsule list` to see available templates.")
-        raise typer.Exit(1) from e
-    except PermissionError as e:
-        con.error(f"Permission denied: {e}")
-        raise typer.Exit(1) from e
-    except (FileNotFoundError, MissingDevcontainer, InvalidJSON) as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
 
 
 @app.command("rename")
@@ -232,18 +198,9 @@ def cmd_rename(
     new_name: Annotated[str, typer.Argument(help="New template name")],
 ) -> None:
     """Rename a stored template."""
-    try:
-        rename_template(old_name, new_name)
+    with _handle_errors():
+        store.rename(old_name, new_name)
         con.success(f"Renamed '{old_name}' to '{new_name}'.")
-    except TemplateNotFound as e:
-        con.error(str(e), "Run `capsule list` to see available templates.")
-        raise typer.Exit(1) from e
-    except TemplateAlreadyExists as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
-    except PermissionError as e:
-        con.error(f"Permission denied: {e}")
-        raise typer.Exit(1) from e
 
 
 @app.command("pull")
@@ -251,30 +208,13 @@ def cmd_pull(
     template_name: Annotated[str, typer.Argument(help="Name of the template to re-fetch")],
 ) -> None:
     """Re-fetch a template from its recorded git source."""
-    try:
-        data = load_provenance(template_name)
-    except TemplateNotFound as e:
-        con.error(str(e), "Run `capsule list` to see available templates.")
-        raise typer.Exit(1) from e
-    except NoProvenance as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
-
-    source = GitSource(url=data["url"], ref=data.get("ref"), subpath=data.get("subpath"))
-    try:
+    with _handle_errors():
+        data = store.load_provenance(template_name)
+        source = GitSource(url=data["url"], ref=data.get("ref"), subpath=data.get("subpath"))
         with materialize(source) as local_path:
-            update_template(template_name, local_path)
-        save_provenance(template_name, source.url, source.ref, source.subpath)
+            store.update(template_name, local_path)
+        store.save_provenance(template_name, source.url, source.ref, source.subpath)
         con.success(f"Template '{template_name}' updated from {source.url}")
-    except (RemoteFetchError, GitSubpathNotFound) as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
-    except (MissingDevcontainer, InvalidJSON) as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
-    except PermissionError as e:
-        con.error(f"Permission denied: {e}")
-        raise typer.Exit(1) from e
 
 
 @app.command("view")
@@ -282,22 +222,17 @@ def cmd_view(
     template_name: Annotated[str, typer.Argument(help="Name of the template to view")],
 ) -> None:
     """Pretty-print a template's devcontainer.json."""
-    try:
-        raw, path = view_template(template_name)
+    with _handle_errors():
+        raw, path = store.view(template_name)
         con.print_json(raw, str(path))
-    except TemplateNotFound as e:
-        con.error(str(e), "Run `capsule list` to see available templates.")
-        raise typer.Exit(1) from e
 
 
 @app.command("search")
 def cmd_search(
-    keyword: Annotated[
-        str, typer.Argument(help="Keyword to search for (case-insensitive)")
-    ],
+    keyword: Annotated[str, typer.Argument(help="Keyword to search for (case-insensitive)")],
 ) -> None:
     """Search all templates' devcontainer.json for a keyword."""
-    results = search_templates(keyword)
+    results = store.search(keyword)
     if not results:
         con.info(f"No matches found for '{keyword}'.")
         return
@@ -307,24 +242,16 @@ def cmd_search(
 
 @app.command("export")
 def cmd_export(
-    template_name: Annotated[
-        str, typer.Argument(help="Name of the template to export")
-    ],
+    template_name: Annotated[str, typer.Argument(help="Name of the template to export")],
     output: Annotated[
         str, typer.Option("--output", "-o", help="Output directory for the zip archive")
     ] = ".",
 ) -> None:
     """Export a template as a .zip archive."""
     output_dir = Path(output).expanduser().resolve()
-    try:
-        result = export_template(template_name, output_dir)
+    with _handle_errors():
+        result = store.export(template_name, output_dir)
         con.success(f"Exported '{template_name}' to {result}")
-    except TemplateNotFound as e:
-        con.error(str(e), "Run `capsule list` to see available templates.")
-        raise typer.Exit(1) from e
-    except PermissionError as e:
-        con.error(f"Permission denied: {e}")
-        raise typer.Exit(1) from e
 
 
 @app.command("init")
@@ -339,18 +266,9 @@ def cmd_init(
 ) -> None:
     """Copy a template into the current project as .devcontainer/."""
     dest = Path(output).expanduser().resolve()
-    try:
-        result = init_template(template_name, dest, force=force)
+    with _handle_errors():
+        result = store.init(template_name, dest, force=force)
         con.success(f"Initialized '{template_name}' at {result}")
-    except TemplateNotFound as e:
-        con.error(str(e), "Run `capsule list` to see available templates.")
-        raise typer.Exit(1) from e
-    except FileExistsError as e:
-        con.error(str(e), "Use --force to overwrite.")
-        raise typer.Exit(1) from e
-    except PermissionError as e:
-        con.error(f"Permission denied: {e}")
-        raise typer.Exit(1) from e
 
 
 @app.command("config")
@@ -359,14 +277,12 @@ def cmd_config() -> None:
     if not CONFIG_FILE.exists():
         con.info(f"No config file found at {CONFIG_FILE}. Using defaults.")
         return
-
-    cfg = load_run_config()
-
+    cfg = RunConfig.load(CONFIG_FILE)
     rows: list[list[str]] = [["config file", str(CONFIG_FILE)], ["shell", cfg.shell]]
     for mount in cfg.dotfiles:
-        rows.append(["dotfile", expand_mount(mount)])
+        rows.append(["dotfile", RunConfig.expand_mount(mount)])
     for mount in cfg.mounts:
-        rows.append(["volume", expand_mount(mount)])
+        rows.append(["volume", RunConfig.expand_mount(mount)])
     for k, v in cfg.env.items():
         rows.append(["env", f"{k}={v}"])
     con.print_table(["Key", "Value"], rows)
@@ -398,6 +314,11 @@ def _container_workspace(c: dict) -> str:
     return ""
 
 
+def _capsule_container_name(cwd: Path) -> str:
+    basename = re.sub(r"[^a-zA-Z0-9_.-]", "-", cwd.name).strip("-")
+    return f"capsule-{basename or 'workspace'}"
+
+
 @app.command("ps")
 def cmd_ps() -> None:
     """List all devcontainers (running and stopped)."""
@@ -405,12 +326,10 @@ def cmd_ps() -> None:
     if cli is None:
         con.error("docker or podman not found in PATH.")
         raise typer.Exit(1)
-
     containers = _list_devcontainers(cli)
     if not containers:
         con.info("No devcontainers found.")
         return
-
     rows = [
         [c.get("Names", "?").lstrip("/"), _container_workspace(c), c.get("Status", "?")]
         for c in containers
@@ -436,14 +355,11 @@ def cmd_stop(
     if cli is None:
         con.error("docker or podman not found in PATH.")
         raise typer.Exit(1)
-
     target = str(Path(workspace).resolve() if workspace else Path.cwd())
     matching = [c for c in _list_devcontainers(cli) if _container_workspace(c) == target]
-
     if not matching:
         con.error(f"No devcontainer found for {target}.")
         raise typer.Exit(1)
-
     for c in matching:
         cid = c.get("ID") or c.get("Id", "")
         name = c.get("Names", cid).lstrip("/")
@@ -460,11 +376,6 @@ def cmd_stop(
             if remove:
                 subprocess.run([cli, "rm", cid], check=False)
                 con.success(f"Removed container {name}.")
-
-
-def _capsule_container_name(cwd: str) -> str:
-    basename = re.sub(r"[^a-zA-Z0-9_.-]", "-", Path(cwd).name).strip("-")
-    return f"capsule-{basename or 'workspace'}"
 
 
 def _ensure_container_up(
@@ -486,15 +397,12 @@ def _ensure_container_up(
         if template_name:
             con.info(f"Local .devcontainer/ found, ignoring template '{template_name}'.")
     elif template_name:
-        try:
-            _, json_path = view_template(template_name)
+        with _handle_errors():
+            _, json_path = store.view(template_name)
             config_path = str(json_path)
-        except TemplateNotFound as e:
-            con.error(str(e), "Run `capsule list` to see available templates.")
-            raise typer.Exit(1) from e
         label = template_name
     else:
-        entries = list_templates()
+        entries = store.list_templates()
         if not entries:
             con.error(
                 "No .devcontainer/devcontainer.json found and no template name given.",
@@ -506,25 +414,23 @@ def _ensure_container_up(
         if picked is None:
             con.info("Aborted.")
             raise typer.Exit(0)
-        try:
-            _, json_path = view_template(picked)
+        with _handle_errors():
+            _, json_path = store.view(picked)
             config_path = str(json_path)
-        except TemplateNotFound as e:
-            con.error(str(e))
-            raise typer.Exit(1) from e
         label = picked
 
-    cfg = load_run_config()
-    cwd = str(Path.cwd())
+    cfg = RunConfig.load(CONFIG_FILE)
+    cwd = Path.cwd()
+    cwd_str = str(cwd)
 
-    up_cmd = ["devcontainer", "up", "--workspace-folder", cwd, "--container-name", _capsule_container_name(cwd)]
+    up_cmd = ["devcontainer", "up", "--workspace-folder", cwd_str, "--container-name", _capsule_container_name(cwd)]
     if rebuild:
         up_cmd.append("--remove-existing-container")
     if config_path:
         up_cmd.extend(["--config", config_path])
-        up_cmd.extend(["--id-label", f"capsule.workspace={cwd}"])
+        up_cmd.extend(["--id-label", f"capsule.workspace={cwd_str}"])
     for mount in cfg.all_mounts():
-        up_cmd.extend(["--mount", mount_to_devcontainer_format(mount)])
+        up_cmd.extend(["--mount", RunConfig.mount_to_devcontainer_format(mount)])
     for k, v in cfg.env.items():
         up_cmd.extend(["--remote-env", f"{k}={v}"])
 
@@ -535,7 +441,7 @@ def _ensure_container_up(
         con.error("devcontainer up failed.")
         raise typer.Exit(result.returncode)
 
-    return config_path, cfg, cwd
+    return config_path, cfg, cwd_str
 
 
 def _build_exec_cmd(config_path: str | None, cfg: RunConfig, cwd: str) -> list[str]:
@@ -554,19 +460,15 @@ def cmd_run(
         str | None,
         typer.Argument(help="Template to run (optional if .devcontainer/ exists)"),
     ] = None,
-    shell: Annotated[
-        str | None, typer.Option("--shell", "-s", help="Shell override")
-    ] = None,
+    shell: Annotated[str | None, typer.Option("--shell", "-s", help="Shell override")] = None,
     rebuild: Annotated[
         bool, typer.Option("--rebuild", help="Destroy and recreate the container")
     ] = False,
 ) -> None:
     """Run a devcontainer. Uses local .devcontainer/ if present, otherwise uses the named template."""
     config_path, cfg, cwd = _ensure_container_up(template_name, rebuild=rebuild)
-
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
     exec_cmd.extend(["--", shell or cfg.shell])
-
     log.info("devcontainer exec: %s", " ".join(exec_cmd))
     os.execvp("devcontainer", exec_cmd)
 
@@ -607,9 +509,7 @@ def cmd_exec(
         raise typer.Exit(1)
 
     config_path, cfg, cwd = _ensure_container_up(template_name, rebuild=rebuild)
-
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
     exec_cmd.extend(["--", *command])
-
     log.info("devcontainer exec: %s", " ".join(exec_cmd))
     os.execvp("devcontainer", exec_cmd)

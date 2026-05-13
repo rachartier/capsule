@@ -1,7 +1,9 @@
+import contextlib
 import logging
 import re
 import subprocess
 import tempfile
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,32 +66,20 @@ def parse_source(raw: str) -> LocalSource | GitSource:
     return LocalSource(path=Path(raw).expanduser().resolve())
 
 
-class materialize:
-    def __init__(self, source: LocalSource | GitSource) -> None:
-        self._source = source
-        self._tmp: tempfile.TemporaryDirectory[str] | None = None
-
-    def __enter__(self) -> Path:
-        if isinstance(self._source, LocalSource):
-            return self._source.path
-        self._tmp = tempfile.TemporaryDirectory(prefix="capsule-fetch-")
-        tmp_path = Path(self._tmp.name) / "repo"
-        try:
-            _git_clone(self._source, tmp_path)
-            root = tmp_path / self._source.subpath if self._source.subpath else tmp_path
-            if not root.is_dir():
-                raise GitSubpathNotFound(
-                    f"Subpath {self._source.subpath!r} not found in {self._source.url}"
-                )
-            return root
-        except BaseException:
-            self._tmp.cleanup()
-            self._tmp = None
-            raise
-
-    def __exit__(self, *_: object) -> None:
-        if self._tmp is not None:
-            self._tmp.cleanup()
+@contextlib.contextmanager
+def materialize(source: LocalSource | GitSource) -> Iterator[Path]:
+    if isinstance(source, LocalSource):
+        yield source.path
+        return
+    with tempfile.TemporaryDirectory(prefix="capsule-fetch-") as tmp:
+        tmp_path = Path(tmp) / "repo"
+        _git_clone(source, tmp_path)
+        root = tmp_path / source.subpath if source.subpath else tmp_path
+        if not root.is_dir():
+            raise GitSubpathNotFound(
+                f"Subpath {source.subpath!r} not found in {source.url}"
+            )
+        yield root
 
 
 def _git_clone(source: GitSource, dest: Path) -> None:
