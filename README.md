@@ -5,7 +5,7 @@
 
 # Capsule
 
-A CLI for managing [devcontainer](https://containers.dev) templates. Save a devcontainer setup once, reuse it in any project.
+A CLI to manage [devcontainer](https://containers.dev) templates from one place. Add a template once, run it in any project with a single command.
 
 ```sh
 cd ~/projects/myapp
@@ -53,7 +53,7 @@ capsule run python
 
 ### Adding individual templates
 
-Point at a single template directory — local, shorthand, or full URL:
+Point at a single template directory (local, shorthand, or full URL):
 
 ```sh
 capsule add gh:rachartier/capsule/templates/python
@@ -68,7 +68,7 @@ For generic git remotes use `--subpath` and `--ref`:
 capsule add git@mygitlab.com:team/devcontainers.git --subpath python --ref stable
 ```
 
-Authentication uses your existing git setup (SSH keys, credential helpers, netrc) — no token configuration needed.
+Authentication uses your existing git setup (SSH keys, credential helpers, netrc). No token configuration needed.
 
 ## How `capsule run` works
 
