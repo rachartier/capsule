@@ -24,7 +24,6 @@ name = "capsule"
 version = "0.2.0"
 source = { editable = "." }
 dependencies = [
-    { name = "rich" },
     { name = "typer" },
 ]
 
@@ -40,7 +39,6 @@ dev = [
 requires-dist = [
     { name = "pyinstaller", marker = "extra == 'build'", specifier = ">=6" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
-    { name = "rich", specifier = ">=13" },
     { name = "typer", specifier = ">=0.12" },
 ]
 

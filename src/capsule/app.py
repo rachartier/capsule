@@ -7,10 +7,6 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from rich.json import JSON
-from rich.panel import Panel
-from rich.prompt import Confirm
-from rich.table import Table
 
 from capsule import console as con
 from capsule.config import CONFIG_FILE
@@ -42,7 +38,7 @@ from capsule.templates import (
     view_template,
 )
 
-app = typer.Typer(no_args_is_help=True, rich_markup_mode="rich")
+app = typer.Typer(no_args_is_help=True)
 log = logging.getLogger(__name__)
 
 
@@ -51,16 +47,13 @@ def cmd_list() -> None:
     """List all available templates."""
     entries = list_templates()
     if not entries:
-        con.info("No templates found. Use [bold]capsule add[/bold] to create one.")
+        con.info("No templates found. Use 'capsule add' to create one.")
         return
-    table = Table(show_header=True, header_style="bold blue")
-    table.add_column("Name")
-    table.add_column("Path")
-    table.add_column("Last Modified")
-    for e in entries:
-        mtime = datetime.fromtimestamp(e["mtime"]).strftime("%Y-%m-%d %H:%M")
-        table.add_row(e["name"], e["path"], mtime)
-    con.console.print(table)
+    rows = [
+        [e["name"], e["path"], datetime.fromtimestamp(e["mtime"]).strftime("%Y-%m-%d %H:%M")]
+        for e in entries
+    ]
+    con.print_table(["Name", "Path", "Last Modified"], rows)
 
 
 @app.command("add")
@@ -105,7 +98,7 @@ def cmd_add(
             if (local_path / "devcontainer.json").exists():
                 template_name = name or _default_template_name(parsed)
                 dest = add_template(local_path, template_name)
-                con.success(f"Template [bold]{template_name}[/bold] added at {dest}")
+                con.success(f"Template '{template_name}' added at {dest}")
             else:
                 if name is not None:
                     con.error("--name cannot be used when adding a directory of templates.")
@@ -163,11 +156,11 @@ def _add_all_templates(directory: Path) -> bool:
             errors.append((d.name, str(e)))
 
     for n in added:
-        con.success(f"Template [bold]{n}[/bold] added")
+        con.success(f"Template '{n}' added")
     for n in skipped:
-        con.info(f"Template [bold]{n}[/bold] already exists, skipped")
+        con.info(f"Template '{n}' already exists, skipped")
     for n, msg in errors:
-        con.error(f"[bold]{n}[/bold]: {msg}")
+        con.error(f"{n}: {msg}")
 
     return bool(errors)
 
@@ -183,13 +176,12 @@ def cmd_delete(
 ) -> None:
     """Delete a template."""
     if not force:
-        confirmed = Confirm.ask(f"Delete template [bold]{template_name}[/bold]?")
-        if not confirmed:
+        if not con.confirm(f"Delete template '{template_name}'?"):
             con.info("Aborted.")
             return
     try:
         delete_template(template_name)
-        con.success(f"Template [bold]{template_name}[/bold] deleted.")
+        con.success(f"Template '{template_name}' deleted.")
     except TemplateNotFound as e:
         con.error(str(e), "Run `capsule list` to see available templates.")
         raise typer.Exit(1) from e
@@ -212,7 +204,7 @@ def cmd_update(
     template_name = name or source.name
     try:
         update_template(template_name, source)
-        con.success(f"Template [bold]{template_name}[/bold] updated.")
+        con.success(f"Template '{template_name}' updated.")
     except TemplateNotFound as e:
         con.error(str(e), "Run `capsule list` to see available templates.")
         raise typer.Exit(1) from e
@@ -231,9 +223,7 @@ def cmd_view(
     """Pretty-print a template's devcontainer.json."""
     try:
         raw, path = view_template(template_name)
-        con.console.print(
-            Panel(JSON(raw), title=str(path), border_style="blue", title_align="left")
-        )
+        con.print_json(raw, str(path))
     except TemplateNotFound as e:
         con.error(str(e), "Run `capsule list` to see available templates.")
         raise typer.Exit(1) from e
@@ -248,15 +238,10 @@ def cmd_search(
     """Search all templates' devcontainer.json for a keyword."""
     results = search_templates(keyword)
     if not results:
-        con.info(f"No matches found for [bold]{keyword}[/bold].")
+        con.info(f"No matches found for '{keyword}'.")
         return
-    table = Table(show_header=True, header_style="bold blue")
-    table.add_column("Template Name")
-    table.add_column("Matching Field")
-    table.add_column("Value Snippet")
-    for r in results:
-        table.add_row(r["template"], r["field"], r["snippet"])
-    con.console.print(table)
+    rows = [[r["template"], r["field"], r["snippet"]] for r in results]
+    con.print_table(["Template Name", "Matching Field", "Value Snippet"], rows)
 
 
 @app.command("export")
@@ -272,7 +257,7 @@ def cmd_export(
     output_dir = Path(output).expanduser().resolve()
     try:
         result = export_template(template_name, output_dir)
-        con.success(f"Exported [bold]{template_name}[/bold] to {result}")
+        con.success(f"Exported '{template_name}' to {result}")
     except TemplateNotFound as e:
         con.error(str(e), "Run `capsule list` to see available templates.")
         raise typer.Exit(1) from e
@@ -295,7 +280,7 @@ def cmd_init(
     dest = Path(output).expanduser().resolve()
     try:
         result = init_template(template_name, dest, force=force)
-        con.success(f"Initialized [bold]{template_name}[/bold] at {result}")
+        con.success(f"Initialized '{template_name}' at {result}")
     except TemplateNotFound as e:
         con.error(str(e), "Run `capsule list` to see available templates.")
         raise typer.Exit(1) from e
@@ -316,21 +301,14 @@ def cmd_config() -> None:
 
     cfg = load_run_config()
 
-    table = Table(show_header=True, header_style="bold blue", box=None, pad_edge=False)
-    table.add_column("Key", style="bold")
-    table.add_column("Value")
-
-    table.add_row("config file", str(CONFIG_FILE))
-    table.add_row("shell", cfg.shell)
-
+    rows: list[list[str]] = [["config file", str(CONFIG_FILE)], ["shell", cfg.shell]]
     for mount in cfg.dotfiles:
-        table.add_row("dotfile", expand_mount(mount))
+        rows.append(["dotfile", expand_mount(mount)])
     for mount in cfg.mounts:
-        table.add_row("volume", expand_mount(mount))
+        rows.append(["volume", expand_mount(mount)])
     for k, v in cfg.env.items():
-        table.add_row("env", f"{k}={v}")
-
-    con.console.print(table)
+        rows.append(["env", f"{k}={v}"])
+    con.print_table(["Key", "Value"], rows)
 
 
 @app.command("run")
@@ -360,9 +338,7 @@ def cmd_run(
     if local.exists():
         label = ".devcontainer/"
         if template_name:
-            con.info(
-                f"Local .devcontainer/ found, ignoring template [bold]{template_name}[/bold]."
-            )
+            con.info(f"Local .devcontainer/ found, ignoring template '{template_name}'.")
     elif template_name:
         try:
             _, json_path = view_template(template_name)
@@ -392,7 +368,7 @@ def cmd_run(
     for k, v in cfg.env.items():
         up_cmd.extend(["--remote-env", f"{k}={v}"])
 
-    con.info(f"Starting [bold]{label}[/bold] ...")
+    con.info(f"Starting '{label}' ...")
     log.info("devcontainer up: %s", " ".join(up_cmd))
     result = subprocess.run(up_cmd)
     if result.returncode != 0:
