@@ -27,6 +27,7 @@ from capsule.sources import (
 from capsule.templates import (
     InvalidJSON,
     MissingDevcontainer,
+    NoProvenance,
     TemplateAlreadyExists,
     TemplateNotFound,
     add_template,
@@ -34,6 +35,8 @@ from capsule.templates import (
     export_template,
     init_template,
     list_templates,
+    load_provenance,
+    save_provenance,
     search_templates,
     update_template,
     view_template,
@@ -99,6 +102,8 @@ def cmd_add(
             if (local_path / "devcontainer.json").exists():
                 template_name = name or _default_template_name(parsed)
                 dest = add_template(local_path, template_name)
+                if isinstance(parsed, GitSource):
+                    save_provenance(template_name, parsed.url, parsed.ref, parsed.subpath)
                 con.success(f"Template '{template_name}' added at {dest}")
             else:
                 if name is not None:
@@ -214,6 +219,37 @@ def cmd_update(
         raise typer.Exit(1) from e
     except (FileNotFoundError, MissingDevcontainer, InvalidJSON) as e:
         con.error(str(e))
+        raise typer.Exit(1) from e
+
+
+@app.command("pull")
+def cmd_pull(
+    template_name: Annotated[str, typer.Argument(help="Name of the template to re-fetch")],
+) -> None:
+    """Re-fetch a template from its recorded git source."""
+    try:
+        data = load_provenance(template_name)
+    except TemplateNotFound as e:
+        con.error(str(e), "Run `capsule list` to see available templates.")
+        raise typer.Exit(1) from e
+    except NoProvenance as e:
+        con.error(str(e))
+        raise typer.Exit(1) from e
+
+    source = GitSource(url=data["url"], ref=data.get("ref"), subpath=data.get("subpath"))
+    try:
+        with materialize(source) as local_path:
+            update_template(template_name, local_path)
+        save_provenance(template_name, source.url, source.ref, source.subpath)
+        con.success(f"Template '{template_name}' updated from {source.url}")
+    except (RemoteFetchError, GitSubpathNotFound) as e:
+        con.error(str(e))
+        raise typer.Exit(1) from e
+    except (MissingDevcontainer, InvalidJSON) as e:
+        con.error(str(e))
+        raise typer.Exit(1) from e
+    except PermissionError as e:
+        con.error(f"Permission denied: {e}")
         raise typer.Exit(1) from e
 
 

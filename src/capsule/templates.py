@@ -1,6 +1,7 @@
 import json
 import logging
 import shutil
+import tomllib
 from pathlib import Path
 from typing import TypedDict, cast
 
@@ -23,6 +24,13 @@ class InvalidJSON(Exception):
 
 class MissingDevcontainer(Exception):
     pass
+
+
+class NoProvenance(Exception):
+    pass
+
+
+_PROVENANCE_FILE = "capsule.toml"
 
 
 class TemplateEntry(TypedDict):
@@ -153,6 +161,26 @@ def _validate_json(path: Path) -> None:
         json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         raise InvalidJSON(f"Invalid JSON in {path}: {e}") from e
+
+
+def save_provenance(name: str, url: str, ref: str | None, subpath: str | None) -> None:
+    lines = [f'url = "{url}"']
+    if ref:
+        lines.append(f'ref = "{ref}"')
+    if subpath:
+        lines.append(f'subpath = "{subpath}"')
+    (_dest(name) / _PROVENANCE_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def load_provenance(name: str) -> dict[str, str]:
+    dest = _dest(name)
+    if not dest.exists():
+        raise TemplateNotFound(f"Template '{name}' not found")
+    p = dest / _PROVENANCE_FILE
+    if not p.exists():
+        raise NoProvenance(f"Template '{name}' has no recorded source (was added from a local path)")
+    with open(p, "rb") as f:
+        return tomllib.load(f)  # type: ignore[return-value]
 
 
 def _flatten(obj: object, prefix: str = "") -> list[tuple[str, str]]:
