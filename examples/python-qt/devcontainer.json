@@ -1,15 +1,11 @@
 {
   "name": "Python (Qt/GUI)",
-  "image": "mcr.microsoft.com/devcontainers/python:3.13",
-  "features": {
-    "ghcr.io/devcontainers/features/common-utils:2": {
-      "installZsh": true,
-      "upgradePackages": true
-    }
+  "build": {
+    "dockerfile": "Dockerfile"
   },
   "remoteEnv": {
     "UV_LINK_MODE": "copy",
     "UV_COMPILE_BYTECODE": "1"
   },
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y libgl1 libegl1 libegl-mesa0 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xkb1 libxkbcommon-x11-0 libxcb-shape0 libxcb-cursor0 libdbus-1-3 && pip install uv && (uv sync --locked 2>/dev/null || uv pip install --system -r requirements.txt 2>/dev/null || true)"
+  "postCreateCommand": "pip install uv && (uv sync --locked 2>/dev/null || uv pip install --system -r requirements.txt 2>/dev/null || true)"
 }
