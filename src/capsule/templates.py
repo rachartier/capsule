@@ -42,7 +42,10 @@ def _template_dirs() -> list[Path]:
 
 
 def list_templates() -> list[TemplateEntry]:
-    return [{"name": p.name, "path": str(p), "mtime": p.stat().st_mtime} for p in _template_dirs()]
+    return [
+        {"name": p.name, "path": str(p), "mtime": p.stat().st_mtime}
+        for p in _template_dirs()
+    ]
 
 
 def _dest(name: str) -> Path:
@@ -51,7 +54,9 @@ def _dest(name: str) -> Path:
 
 def add_template(source: Path, name: str) -> Path:
     if not source.exists() or not source.is_dir():
-        raise FileNotFoundError(f"Source path does not exist or is not a directory: {source}")
+        raise FileNotFoundError(
+            f"Source path does not exist or is not a directory: {source}"
+        )
     if not (source / "devcontainer.json").exists():
         raise MissingDevcontainer(f"No devcontainer.json found in {source}")
     dest = _dest(name)
@@ -76,7 +81,9 @@ def update_template(name: str, source: Path) -> None:
     if not dest.exists():
         raise TemplateNotFound(f"Template '{name}' not found")
     if not source.exists() or not source.is_dir():
-        raise FileNotFoundError(f"Source path does not exist or is not a directory: {source}")
+        raise FileNotFoundError(
+            f"Source path does not exist or is not a directory: {source}"
+        )
     new_json = source / "devcontainer.json"
     if not new_json.exists():
         raise MissingDevcontainer(f"No devcontainer.json found in {source}")
@@ -107,11 +114,13 @@ def search_templates(keyword: str) -> list[SearchResult]:
             continue
         for field, snippet in _flatten(data):
             if kw in field.lower() or kw in snippet.lower():
-                results.append({
-                    "template": p.name,
-                    "field": field,
-                    "snippet": snippet[:80],
-                })
+                results.append(
+                    {
+                        "template": p.name,
+                        "field": field,
+                        "snippet": snippet[:80],
+                    }
+                )
     return results
 
 

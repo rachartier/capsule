@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import subprocess
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -18,6 +19,15 @@ from capsule.run_config import (
     expand_mount,
     load_run_config,
     mount_to_devcontainer_format,
+)
+from capsule.sources import (
+    GitSource,
+    GitSubpathNotFound,
+    LocalSource,
+    RemoteFetchError,
+    materialize,
+    parse_source,
+    repo_name,
 )
 from capsule.templates import (
     InvalidJSON,
@@ -57,36 +67,79 @@ def cmd_list() -> None:
 
 @app.command("add")
 def cmd_add(
-    source_path: Annotated[str, typer.Argument(help="Path to the source devcontainer folder")],
-    name: Annotated[str | None, typer.Option("--name", "-n", help="Override template name")] = None,
+    source: Annotated[
+        str,
+        typer.Argument(
+            help="Local path, gh:owner/repo[@ref][/subpath], or a git remote URL"
+        ),
+    ],
+    name: Annotated[
+        str | None, typer.Option("--name", "-n", help="Override template name")
+    ] = None,
+    ref: Annotated[
+        str | None,
+        typer.Option(
+            "--ref", help="Git ref (branch/tag/sha). Overrides any inline ref."
+        ),
+    ] = None,
+    subpath: Annotated[
+        str | None,
+        typer.Option(
+            "--subpath",
+            help="Subdirectory inside the repo that contains the template. Overrides any inline subpath.",
+        ),
+    ] = None,
 ) -> None:
-    """Add a new template from a local folder."""
-    source = Path(source_path).expanduser().resolve()
-    template_name = name or source.name
+    """Add a new template from a local folder or a git remote."""
+    parsed = parse_source(source)
+    if isinstance(parsed, GitSource):
+        parsed = replace(
+            parsed,
+            ref=ref if ref is not None else parsed.ref,
+            subpath=subpath if subpath is not None else parsed.subpath,
+        )
+    elif ref is not None or subpath is not None:
+        con.error("--ref and --subpath only apply to git remote sources.")
+        raise typer.Exit(1)
+
     try:
-        dest = add_template(source, template_name)
+        with materialize(parsed) as local_path:
+            template_name = name or _default_template_name(parsed)
+            dest = add_template(local_path, template_name)
         con.success(f"Template [bold]{template_name}[/bold] added at {dest}")
-    except FileNotFoundError as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
-    except MissingDevcontainer as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
     except TemplateAlreadyExists as e:
         con.error(str(e), "Run `capsule list` to see existing templates.")
-        raise typer.Exit(1) from e
-    except InvalidJSON as e:
-        con.error(str(e))
         raise typer.Exit(1) from e
     except PermissionError as e:
         con.error(f"Permission denied: {e}")
         raise typer.Exit(1) from e
+    except (
+        FileNotFoundError,
+        MissingDevcontainer,
+        InvalidJSON,
+        RemoteFetchError,
+        GitSubpathNotFound,
+    ) as e:
+        con.error(str(e))
+        raise typer.Exit(1) from e
+
+
+def _default_template_name(source: LocalSource | GitSource) -> str:
+    if isinstance(source, LocalSource):
+        return source.path.name
+    if source.subpath:
+        return Path(source.subpath).name
+    return repo_name(source.url)
 
 
 @app.command("delete")
 def cmd_delete(
-    template_name: Annotated[str, typer.Argument(help="Name of the template to delete")],
-    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation prompt")] = False,
+    template_name: Annotated[
+        str, typer.Argument(help="Name of the template to delete")
+    ],
+    force: Annotated[
+        bool, typer.Option("--force", "-f", help="Skip confirmation prompt")
+    ] = False,
 ) -> None:
     """Delete a template."""
     if not force:
@@ -107,8 +160,12 @@ def cmd_delete(
 
 @app.command("update")
 def cmd_update(
-    source_path: Annotated[str, typer.Argument(help="Path to the source devcontainer folder")],
-    name: Annotated[str | None, typer.Option("--name", "-n", help="Override template name")] = None,
+    source_path: Annotated[
+        str, typer.Argument(help="Path to the source devcontainer folder")
+    ],
+    name: Annotated[
+        str | None, typer.Option("--name", "-n", help="Override template name")
+    ] = None,
 ) -> None:
     """Replace the devcontainer.json in an existing template from a folder."""
     source = Path(source_path).expanduser().resolve()
@@ -119,17 +176,11 @@ def cmd_update(
     except TemplateNotFound as e:
         con.error(str(e), "Run `capsule list` to see available templates.")
         raise typer.Exit(1) from e
-    except FileNotFoundError as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
-    except MissingDevcontainer as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
-    except InvalidJSON as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
     except PermissionError as e:
         con.error(f"Permission denied: {e}")
+        raise typer.Exit(1) from e
+    except (FileNotFoundError, MissingDevcontainer, InvalidJSON) as e:
+        con.error(str(e))
         raise typer.Exit(1) from e
 
 
@@ -140,7 +191,9 @@ def cmd_view(
     """Pretty-print a template's devcontainer.json."""
     try:
         raw, path = view_template(template_name)
-        con.console.print(Panel(JSON(raw), title=str(path), border_style="blue", title_align="left"))
+        con.console.print(
+            Panel(JSON(raw), title=str(path), border_style="blue", title_align="left")
+        )
     except TemplateNotFound as e:
         con.error(str(e), "Run `capsule list` to see available templates.")
         raise typer.Exit(1) from e
@@ -148,7 +201,9 @@ def cmd_view(
 
 @app.command("search")
 def cmd_search(
-    keyword: Annotated[str, typer.Argument(help="Keyword to search for (case-insensitive)")],
+    keyword: Annotated[
+        str, typer.Argument(help="Keyword to search for (case-insensitive)")
+    ],
 ) -> None:
     """Search all templates' devcontainer.json for a keyword."""
     results = search_templates(keyword)
@@ -166,8 +221,12 @@ def cmd_search(
 
 @app.command("export")
 def cmd_export(
-    template_name: Annotated[str, typer.Argument(help="Name of the template to export")],
-    output: Annotated[str, typer.Option("--output", "-o", help="Output directory for the zip archive")] = ".",
+    template_name: Annotated[
+        str, typer.Argument(help="Name of the template to export")
+    ],
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Output directory for the zip archive")
+    ] = ".",
 ) -> None:
     """Export a template as a .zip archive."""
     output_dir = Path(output).expanduser().resolve()
@@ -185,8 +244,12 @@ def cmd_export(
 @app.command("init")
 def cmd_init(
     template_name: Annotated[str, typer.Argument(help="Template to apply")],
-    output: Annotated[str, typer.Option("--output", "-o", help="Destination directory")] = ".devcontainer",
-    force: Annotated[bool, typer.Option("--force", "-f", help="Overwrite if destination exists")] = False,
+    output: Annotated[
+        str, typer.Option("--output", "-o", help="Destination directory")
+    ] = ".devcontainer",
+    force: Annotated[
+        bool, typer.Option("--force", "-f", help="Overwrite if destination exists")
+    ] = False,
 ) -> None:
     """Copy a template into the current project as .devcontainer/."""
     dest = Path(output).expanduser().resolve()
@@ -232,9 +295,16 @@ def cmd_config() -> None:
 
 @app.command("run")
 def cmd_run(
-    template_name: Annotated[str | None, typer.Argument(help="Template to run (optional if .devcontainer/ exists)")] = None,
-    shell: Annotated[str | None, typer.Option("--shell", "-s", help="Shell override")] = None,
-    rebuild: Annotated[bool, typer.Option("--rebuild", help="Destroy and recreate the container")] = False,
+    template_name: Annotated[
+        str | None,
+        typer.Argument(help="Template to run (optional if .devcontainer/ exists)"),
+    ] = None,
+    shell: Annotated[
+        str | None, typer.Option("--shell", "-s", help="Shell override")
+    ] = None,
+    rebuild: Annotated[
+        bool, typer.Option("--rebuild", help="Destroy and recreate the container")
+    ] = False,
 ) -> None:
     """Run a devcontainer. Uses local .devcontainer/ if present, otherwise uses the named template."""
     if shutil.which("devcontainer") is None:
@@ -250,7 +320,9 @@ def cmd_run(
     if local.exists():
         label = ".devcontainer/"
         if template_name:
-            con.info(f"Local .devcontainer/ found, ignoring template [bold]{template_name}[/bold].")
+            con.info(
+                f"Local .devcontainer/ found, ignoring template [bold]{template_name}[/bold]."
+            )
     elif template_name:
         try:
             _, json_path = view_template(template_name)

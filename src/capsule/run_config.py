@@ -2,7 +2,7 @@ import os
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TypedDict
 
 from capsule.config import CONFIG_FILE
 
@@ -38,7 +38,7 @@ def load_run_config() -> RunConfig:
         return RunConfig()
 
     with open(CONFIG_FILE, "rb") as f:
-        data = cast(_Config, cast(object, tomllib.load(f)))
+        data: _Config = tomllib.load(f)  # type: ignore[assignment]
 
     volumes = data.get("volumes", {})
     dotfiles = data.get("dotfiles", {})
