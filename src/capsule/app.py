@@ -2,6 +2,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 from datetime import datetime
@@ -440,6 +441,11 @@ def cmd_stop(
                 con.success(f"Removed container {name}.")
 
 
+def _capsule_container_name(cwd: str) -> str:
+    basename = re.sub(r"[^a-zA-Z0-9_.-]", "-", Path(cwd).name).strip("-")
+    return f"capsule-{basename or 'workspace'}"
+
+
 def _ensure_container_up(
     template_name: str | None,
     rebuild: bool = False,
@@ -476,7 +482,7 @@ def _ensure_container_up(
     cfg = load_run_config()
     cwd = str(Path.cwd())
 
-    up_cmd = ["devcontainer", "up", "--workspace-folder", cwd]
+    up_cmd = ["devcontainer", "up", "--workspace-folder", cwd, "--container-name", _capsule_container_name(cwd)]
     if rebuild:
         up_cmd.append("--remove-existing-container")
     if config_path:
