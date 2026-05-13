@@ -81,8 +81,9 @@ def update_template(name: str, source: Path) -> None:
     if not new_json.exists():
         raise MissingDevcontainer(f"No devcontainer.json found in {source}")
     _validate_json(new_json)
-    _ = shutil.copy2(new_json, dest / "devcontainer.json")
-    log.info("Updated devcontainer.json for template '%s'", name)
+    shutil.rmtree(dest)
+    _ = shutil.copytree(source, dest)
+    log.info("Updated template '%s' from %s", name, source)
 
 
 def view_template(name: str) -> tuple[str, Path]:
