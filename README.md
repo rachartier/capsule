@@ -114,6 +114,7 @@ Templates live in `~/.config/capsule/templates/` (respects `$XDG_CONFIG_HOME`). 
 | `capsule add <source> [--name <n>] [--ref <ref>] [--subpath <dir>]` | Store a template from a local directory, `gh:owner/repo[/subpath]`, or any git URL. `--ref` overrides branch/tag, `--subpath` selects a subdirectory. |
 | `capsule init <template> [--output <dir>] [--force]` | Copy a template into the current project as `.devcontainer/`. |
 | `capsule run [<template>] [--shell <sh>] [--rebuild]` | Start the devcontainer and open a shell. |
+| `capsule exec [<template>] <command...> [--rebuild]` | Run a one-shot command in the devcontainer. Uses local `.devcontainer/` if present, otherwise the first positional is the template name. |
 | `capsule view <template>` | Pretty-print a template's `devcontainer.json`. |
 | `capsule search <keyword>` | Case-insensitive search across all templates' `devcontainer.json`. |
 | `capsule update <path> [--name <n>]` | Replace the `devcontainer.json` in a stored template from a folder. |

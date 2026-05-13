@@ -11,6 +11,7 @@ import typer
 from capsule import console as con
 from capsule.config import CONFIG_FILE
 from capsule.run_config import (
+    RunConfig,
     expand_mount,
     load_run_config,
     mount_to_devcontainer_format,
@@ -311,20 +312,10 @@ def cmd_config() -> None:
     con.print_table(["Key", "Value"], rows)
 
 
-@app.command("run")
-def cmd_run(
-    template_name: Annotated[
-        str | None,
-        typer.Argument(help="Template to run (optional if .devcontainer/ exists)"),
-    ] = None,
-    shell: Annotated[
-        str | None, typer.Option("--shell", "-s", help="Shell override")
-    ] = None,
-    rebuild: Annotated[
-        bool, typer.Option("--rebuild", help="Destroy and recreate the container")
-    ] = False,
-) -> None:
-    """Run a devcontainer. Uses local .devcontainer/ if present, otherwise uses the named template."""
+def _ensure_container_up(
+    template_name: str | None,
+    rebuild: bool = False,
+) -> tuple[str | None, RunConfig, str]:
     if shutil.which("devcontainer") is None:
         con.error(
             "devcontainer CLI not found in PATH.",
@@ -375,13 +366,81 @@ def cmd_run(
         con.error("devcontainer up failed.")
         raise typer.Exit(result.returncode)
 
+    return config_path, cfg, cwd
+
+
+def _build_exec_cmd(config_path: str | None, cfg: RunConfig, cwd: str) -> list[str]:
     exec_cmd = ["devcontainer", "exec", "--workspace-folder", cwd]
     if config_path:
         exec_cmd.extend(["--config", config_path])
         exec_cmd.extend(["--id-label", f"capsule.workspace={cwd}"])
     for k, v in cfg.env.items():
         exec_cmd.extend(["--remote-env", f"{k}={v}"])
+    return exec_cmd
+
+
+@app.command("run")
+def cmd_run(
+    template_name: Annotated[
+        str | None,
+        typer.Argument(help="Template to run (optional if .devcontainer/ exists)"),
+    ] = None,
+    shell: Annotated[
+        str | None, typer.Option("--shell", "-s", help="Shell override")
+    ] = None,
+    rebuild: Annotated[
+        bool, typer.Option("--rebuild", help="Destroy and recreate the container")
+    ] = False,
+) -> None:
+    """Run a devcontainer. Uses local .devcontainer/ if present, otherwise uses the named template."""
+    config_path, cfg, cwd = _ensure_container_up(template_name, rebuild=rebuild)
+
+    exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
     exec_cmd.extend(["--", shell or cfg.shell])
+
+    log.info("devcontainer exec: %s", " ".join(exec_cmd))
+    os.execvp("devcontainer", exec_cmd)
+
+
+@app.command(
+    "exec",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def cmd_exec(
+    ctx: typer.Context,
+    rebuild: Annotated[
+        bool, typer.Option("--rebuild", help="Destroy and recreate the container")
+    ] = False,
+) -> None:
+    """Run a one-shot command inside the devcontainer.
+
+    Uses local .devcontainer/ if present. Otherwise the first positional
+    argument is the template name and the rest is the command.
+    """
+    args = ctx.args
+    local = Path.cwd() / ".devcontainer" / "devcontainer.json"
+
+    if local.exists():
+        template_name: str | None = None
+        command = args
+    else:
+        if not args:
+            con.error(
+                "No .devcontainer/devcontainer.json found and no template name given.",
+                "Pass a template name as the first argument, or run `capsule init <template>` first.",
+            )
+            raise typer.Exit(1)
+        template_name = args[0]
+        command = args[1:]
+
+    if not command:
+        con.error("No command given.", "Usage: capsule exec [<template>] <command...>")
+        raise typer.Exit(1)
+
+    config_path, cfg, cwd = _ensure_container_up(template_name, rebuild=rebuild)
+
+    exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
+    exec_cmd.extend(["--", *command])
 
     log.info("devcontainer exec: %s", " ".join(exec_cmd))
     os.execvp("devcontainer", exec_cmd)
