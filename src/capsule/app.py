@@ -494,11 +494,25 @@ def _ensure_container_up(
             raise typer.Exit(1) from e
         label = template_name
     else:
-        con.error(
-            "No .devcontainer/devcontainer.json found and no template name given.",
-            "Run `capsule init <template>` first, or pass a template name.",
-        )
-        raise typer.Exit(1)
+        entries = list_templates()
+        if not entries:
+            con.error(
+                "No .devcontainer/devcontainer.json found and no template name given.",
+                "Run `capsule add` to store a template first.",
+            )
+            raise typer.Exit(1)
+        con.info("No template given. Pick one:")
+        picked = con.pick([e["name"] for e in entries])
+        if picked is None:
+            con.info("Aborted.")
+            raise typer.Exit(0)
+        try:
+            _, json_path = view_template(picked)
+            config_path = str(json_path)
+        except TemplateNotFound as e:
+            con.error(str(e))
+            raise typer.Exit(1) from e
+        label = picked
 
     cfg = load_run_config()
     cwd = str(Path.cwd())

@@ -43,6 +43,36 @@ def confirm(msg: str) -> bool:
         return False
 
 
+def _fuzzy_match(query: str, target: str) -> bool:
+    it = iter(target.lower())
+    return all(c in it for c in query.lower())
+
+
+def pick(options: list[str]) -> str | None:
+    if not options:
+        return None
+    current = list(options)
+    while True:
+        for i, opt in enumerate(current, 1):
+            print(f"  {_c(_BOLD, _BLU, text=str(i).rjust(2))}  {opt}")
+        try:
+            raw = input("Select number or filter: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if not raw:
+            continue
+        if raw.isdigit() and 1 <= int(raw) <= len(current):
+            return current[int(raw) - 1]
+        filtered = [o for o in options if _fuzzy_match(raw, o)]
+        if not filtered:
+            info(f"No matches for '{raw}'.")
+        elif len(filtered) == 1:
+            return filtered[0]
+        else:
+            current = filtered
+
+
 def print_table(headers: list[str], rows: list[list[str]]) -> None:
     widths = [len(h) for h in headers]
     for row in rows:
