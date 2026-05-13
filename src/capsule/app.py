@@ -1,3 +1,5 @@
+import contextlib
+import json
 import logging
 import os
 import shutil
@@ -346,6 +348,96 @@ def cmd_config() -> None:
     for k, v in cfg.env.items():
         rows.append(["env", f"{k}={v}"])
     con.print_table(["Key", "Value"], rows)
+
+
+def _find_container_cli() -> str | None:
+    for cli in ("docker", "podman"):
+        if shutil.which(cli):
+            return cli
+    return None
+
+
+def _list_devcontainers(cli: str) -> list[dict]:
+    cmd = [cli, "ps", "--all", "--format", "{{json .}}", "--filter", "label=devcontainer.local_folder"]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    containers = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line:
+            with contextlib.suppress(json.JSONDecodeError):
+                containers.append(json.loads(line))
+    return containers
+
+
+def _container_workspace(c: dict) -> str:
+    for part in c.get("Labels", "").split(","):
+        if part.startswith("devcontainer.local_folder="):
+            return part.split("=", 1)[1]
+    return ""
+
+
+@app.command("ps")
+def cmd_ps() -> None:
+    """List all devcontainers (running and stopped)."""
+    cli = _find_container_cli()
+    if cli is None:
+        con.error("docker or podman not found in PATH.")
+        raise typer.Exit(1)
+
+    containers = _list_devcontainers(cli)
+    if not containers:
+        con.info("No devcontainers found.")
+        return
+
+    rows = [
+        [c.get("Names", "?").lstrip("/"), _container_workspace(c), c.get("Status", "?")]
+        for c in containers
+    ]
+    con.print_table(["Container", "Workspace", "Status"], rows)
+
+
+@app.command("stop")
+def cmd_stop(
+    workspace: Annotated[
+        str | None,
+        typer.Argument(help="Workspace path whose container to stop (default: current directory)"),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", "-f", help="Force-remove the container (stop + delete)")
+    ] = False,
+    remove: Annotated[
+        bool, typer.Option("--rm", help="Remove the container after stopping")
+    ] = False,
+) -> None:
+    """Stop the devcontainer for the current directory (or given workspace path)."""
+    cli = _find_container_cli()
+    if cli is None:
+        con.error("docker or podman not found in PATH.")
+        raise typer.Exit(1)
+
+    target = str(Path(workspace).resolve() if workspace else Path.cwd())
+    matching = [c for c in _list_devcontainers(cli) if _container_workspace(c) == target]
+
+    if not matching:
+        con.error(f"No devcontainer found for {target}.")
+        raise typer.Exit(1)
+
+    for c in matching:
+        cid = c.get("ID") or c.get("Id", "")
+        name = c.get("Names", cid).lstrip("/")
+        if force:
+            subprocess.run([cli, "rm", "-f", cid], check=False)
+            con.success(f"Removed container {name}.")
+        else:
+            status = c.get("Status", "")
+            if not status.startswith("Up"):
+                con.info(f"Container {name} is already stopped.")
+            else:
+                subprocess.run([cli, "stop", cid], check=False)
+                con.success(f"Stopped container {name}.")
+            if remove:
+                subprocess.run([cli, "rm", cid], check=False)
+                con.success(f"Removed container {name}.")
 
 
 def _ensure_container_up(
