@@ -39,6 +39,7 @@ from capsule.templates import (
     init_template,
     list_templates,
     load_provenance,
+    rename_template,
     save_provenance,
     search_templates,
     update_template,
@@ -222,6 +223,26 @@ def cmd_update(
         raise typer.Exit(1) from e
     except (FileNotFoundError, MissingDevcontainer, InvalidJSON) as e:
         con.error(str(e))
+        raise typer.Exit(1) from e
+
+
+@app.command("rename")
+def cmd_rename(
+    old_name: Annotated[str, typer.Argument(help="Current template name")],
+    new_name: Annotated[str, typer.Argument(help="New template name")],
+) -> None:
+    """Rename a stored template."""
+    try:
+        rename_template(old_name, new_name)
+        con.success(f"Renamed '{old_name}' to '{new_name}'.")
+    except TemplateNotFound as e:
+        con.error(str(e), "Run `capsule list` to see available templates.")
+        raise typer.Exit(1) from e
+    except TemplateAlreadyExists as e:
+        con.error(str(e))
+        raise typer.Exit(1) from e
+    except PermissionError as e:
+        con.error(f"Permission denied: {e}")
         raise typer.Exit(1) from e
 
 

@@ -163,6 +163,17 @@ def _validate_json(path: Path) -> None:
         raise InvalidJSON(f"Invalid JSON in {path}: {e}") from e
 
 
+def rename_template(old_name: str, new_name: str) -> None:
+    src = _dest(old_name)
+    if not src.exists():
+        raise TemplateNotFound(f"Template '{old_name}' not found")
+    dst = _dest(new_name)
+    if dst.exists():
+        raise TemplateAlreadyExists(f"Template '{new_name}' already exists")
+    src.rename(dst)
+    log.info("Renamed template '%s' to '%s'", old_name, new_name)
+
+
 def save_provenance(name: str, url: str, ref: str | None, subpath: str | None) -> None:
     lines = [f'url = "{url}"']
     if ref:
