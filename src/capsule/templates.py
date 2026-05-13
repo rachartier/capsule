@@ -163,7 +163,7 @@ class TemplateStore:
         p = dest / self._PROVENANCE_FILE
         if not p.exists():
             raise NoProvenance(f"Template '{name}' has no recorded source (was added from a local path)")
-        with open(p, "rb") as f:
+        with p.open("rb") as f:
             return tomllib.load(f)  # type: ignore[return-value]
 
     def _validate_json(self, path: Path) -> None:

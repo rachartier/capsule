@@ -60,7 +60,11 @@ def parse_source(raw: str) -> LocalSource | GitSource:
             subpath=m.group("subpath"),
         )
 
-    if raw.startswith(("http://", "https://", "ssh://", "git://", "git+")) or raw.endswith(".git") or _SCP_GIT_RE.match(raw):
+    if (
+        raw.startswith(("http://", "https://", "ssh://", "git://", "git+"))
+        or raw.endswith(".git")
+        or _SCP_GIT_RE.match(raw)
+    ):
         return GitSource(url=raw, ref=None, subpath=None)
 
     return LocalSource(path=Path(raw).expanduser().resolve())

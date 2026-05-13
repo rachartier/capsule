@@ -107,18 +107,18 @@ def cmd_add(
         raise typer.Exit(1)
 
     with _handle_errors(), materialize(parsed) as local_path:
-            if (local_path / "devcontainer.json").exists():
-                template_name = name or _default_template_name(parsed)
-                dest = store.add(local_path, template_name)
-                if isinstance(parsed, GitSource):
-                    store.save_provenance(template_name, parsed.url, parsed.ref, parsed.subpath)
-                con.success(f"Template '{template_name}' added at {dest}")
-            else:
-                if name is not None:
-                    con.error("--name cannot be used when adding a directory of templates.")
-                    raise typer.Exit(1)
-                if _add_all_templates(local_path, git_source=parsed if isinstance(parsed, GitSource) else None):
-                    raise typer.Exit(1)
+        if (local_path / "devcontainer.json").exists():
+            template_name = name or _default_template_name(parsed)
+            dest = store.add(local_path, template_name)
+            if isinstance(parsed, GitSource):
+                store.save_provenance(template_name, parsed.url, parsed.ref, parsed.subpath)
+            con.success(f"Template '{template_name}' added at {dest}")
+        else:
+            if name is not None:
+                con.error("--name cannot be used when adding a directory of templates.")
+                raise typer.Exit(1)
+            if _add_all_templates(local_path, store, git_source=parsed if isinstance(parsed, GitSource) else None):
+                raise typer.Exit(1)
 
 
 def _default_template_name(source: LocalSource | GitSource) -> str:
@@ -132,10 +132,9 @@ def _default_template_name(source: LocalSource | GitSource) -> str:
 
 def _add_all_templates(
     directory: Path,
-    template_store: TemplateStore | None = None,
+    template_store: TemplateStore,
     git_source: GitSource | None = None,
 ) -> bool:
-    s = template_store or store
     candidates = sorted(
         d for d in directory.iterdir() if d.is_dir() and (d / "devcontainer.json").exists()
     )
@@ -149,12 +148,12 @@ def _add_all_templates(
 
     for d in candidates:
         try:
-            s.add(d, d.name)
+            template_store.add(d, d.name)
             added.append(d.name)
             if git_source is not None:
                 base = git_source.subpath or ""
                 subpath = f"{base}/{d.name}" if base else d.name
-                s.save_provenance(d.name, git_source.url, git_source.ref, subpath)
+                template_store.save_provenance(d.name, git_source.url, git_source.ref, subpath)
         except TemplateAlreadyExists:
             skipped.append(d.name)
         except (FileNotFoundError, MissingDevcontainer, InvalidJSON, PermissionError) as e:
@@ -306,11 +305,11 @@ def _list_devcontainers(cli: str) -> list[dict]:
     cmd = [cli, "ps", "--all", "--format", "{{json .}}", "--filter", "label=devcontainer.local_folder"]
     result = subprocess.run(cmd, capture_output=True, text=True)
     containers = []
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if line:
+    for raw in result.stdout.splitlines():
+        stripped = raw.strip()
+        if stripped:
             with contextlib.suppress(json.JSONDecodeError):
-                containers.append(json.loads(line))
+                containers.append(json.loads(stripped))
     return containers
 
 
@@ -319,7 +318,6 @@ def _container_workspace(c: dict) -> str:
         if part.startswith("devcontainer.local_folder="):
             return part.split("=", 1)[1]
     return ""
-
 
 
 @app.command("ps")

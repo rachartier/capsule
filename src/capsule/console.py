@@ -1,4 +1,4 @@
-import json as _json
+import json
 import logging
 import sys
 
@@ -91,7 +91,7 @@ def print_table(headers: list[str], rows: list[list[str]]) -> None:
 def print_json(raw: str, title: str) -> None:
     bar = "--- " + title
     print(_c(_BLU, text=bar))
-    obj = _json.loads(raw)
-    for line in _json.dumps(obj, indent=2).splitlines():
+    obj = json.loads(raw)
+    for line in json.dumps(obj, indent=2).splitlines():
         print(line)
     print()
