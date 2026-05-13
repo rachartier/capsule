@@ -118,7 +118,7 @@ def cmd_add(
                 if name is not None:
                     con.error("--name cannot be used when adding a directory of templates.")
                     raise typer.Exit(1)
-                if _add_all_templates(local_path):
+                if _add_all_templates(local_path, git_source=parsed if isinstance(parsed, GitSource) else None):
                     raise typer.Exit(1)
 
 
@@ -131,7 +131,11 @@ def _default_template_name(source: LocalSource | GitSource) -> str:
     return last[:-4] if last.endswith(".git") else last
 
 
-def _add_all_templates(directory: Path, template_store: TemplateStore | None = None) -> bool:
+def _add_all_templates(
+    directory: Path,
+    template_store: TemplateStore | None = None,
+    git_source: GitSource | None = None,
+) -> bool:
     s = template_store or store
     candidates = sorted(
         d for d in directory.iterdir() if d.is_dir() and (d / "devcontainer.json").exists()
@@ -148,6 +152,10 @@ def _add_all_templates(directory: Path, template_store: TemplateStore | None = N
         try:
             s.add(d, d.name)
             added.append(d.name)
+            if git_source is not None:
+                base = git_source.subpath or ""
+                subpath = f"{base}/{d.name}" if base else d.name
+                s.save_provenance(d.name, git_source.url, git_source.ref, subpath)
         except TemplateAlreadyExists:
             skipped.append(d.name)
         except (FileNotFoundError, MissingDevcontainer, InvalidJSON, PermissionError) as e:
