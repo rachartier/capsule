@@ -96,7 +96,7 @@ Under the hood it calls `devcontainer up` to start the container and run its lif
 | `capsule run [<template>] [--shell <sh>] [--rebuild]` | Start the devcontainer and open a shell. |
 | `capsule view <template>` | Pretty-print a template's `devcontainer.json`. |
 | `capsule search <keyword>` | Case-insensitive search across all templates' `devcontainer.json`. |
-| `capsule update <template> <devcontainer.json>` | Replace the `devcontainer.json` in a stored template. |
+| `capsule update <path> [--name <n>]` | Replace the `devcontainer.json` in a stored template from a folder. |
 | `capsule delete <template> [--force]` | Delete a stored template. |
 | `capsule export <template> [--output <dir>]` | Export a template as a `.zip` archive. |
 | `capsule config` | Show resolved config from `config.toml`. |

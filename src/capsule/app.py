@@ -107,18 +107,22 @@ def cmd_delete(
 
 @app.command("update")
 def cmd_update(
-    template_name: Annotated[str, typer.Argument(help="Name of the template to update")],
-    new_devcontainer_path: Annotated[str, typer.Argument(help="Path to the new devcontainer.json")],
+    source_path: Annotated[str, typer.Argument(help="Path to the source devcontainer folder")],
+    name: Annotated[str | None, typer.Option("--name", "-n", help="Override template name")] = None,
 ) -> None:
-    """Replace the devcontainer.json in an existing template."""
-    new_path = Path(new_devcontainer_path).expanduser().resolve()
+    """Replace the devcontainer.json in an existing template from a folder."""
+    source = Path(source_path).expanduser().resolve()
+    template_name = name or source.name
     try:
-        update_template(template_name, new_path)
+        update_template(template_name, source)
         con.success(f"Template [bold]{template_name}[/bold] updated.")
     except TemplateNotFound as e:
         con.error(str(e), "Run `capsule list` to see available templates.")
         raise typer.Exit(1) from e
     except FileNotFoundError as e:
+        con.error(str(e))
+        raise typer.Exit(1) from e
+    except MissingDevcontainer as e:
         con.error(str(e))
         raise typer.Exit(1) from e
     except InvalidJSON as e:
@@ -270,6 +274,7 @@ def cmd_run(
         up_cmd.append("--remove-existing-container")
     if config_path:
         up_cmd.extend(["--config", config_path])
+        up_cmd.extend(["--id-label", f"capsule.workspace={cwd}"])
     for mount in cfg.all_mounts():
         up_cmd.extend(["--mount", mount_to_devcontainer_format(mount)])
     for k, v in cfg.env.items():
@@ -285,6 +290,7 @@ def cmd_run(
     exec_cmd = ["devcontainer", "exec", "--workspace-folder", cwd]
     if config_path:
         exec_cmd.extend(["--config", config_path])
+        exec_cmd.extend(["--id-label", f"capsule.workspace={cwd}"])
     exec_cmd.extend(["--", shell or cfg.shell])
 
     log.info("devcontainer exec: %s", " ".join(exec_cmd))

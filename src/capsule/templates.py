@@ -71,12 +71,15 @@ def delete_template(name: str) -> None:
     log.info("Deleted template '%s'", name)
 
 
-def update_template(name: str, new_json: Path) -> None:
+def update_template(name: str, source: Path) -> None:
     dest = _dest(name)
     if not dest.exists():
         raise TemplateNotFound(f"Template '{name}' not found")
+    if not source.exists() or not source.is_dir():
+        raise FileNotFoundError(f"Source path does not exist or is not a directory: {source}")
+    new_json = source / "devcontainer.json"
     if not new_json.exists():
-        raise FileNotFoundError(f"File not found: {new_json}")
+        raise MissingDevcontainer(f"No devcontainer.json found in {source}")
     _validate_json(new_json)
     _ = shutil.copy2(new_json, dest / "devcontainer.json")
     log.info("Updated devcontainer.json for template '%s'", name)

@@ -1,6 +1,6 @@
 [project]
 name = "capsule"
-version = "0.1.0"
+version = "0.1.2"
 description = "Manage devcontainer templates from the CLI"
 readme = "README.md"
 requires-python = ">=3.13"
