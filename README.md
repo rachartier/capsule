@@ -12,15 +12,23 @@ cd ~/projects/myapp
 capsule run python    # start the stored "python" template, open a shell inside
 ```
 
-To customize the devcontainer for this project, copy the template into `.devcontainer/` first and edit it:
+Need project-specific tweaks? Fork the template into the project in one step:
 
 ```sh
-capsule init python
-$EDITOR .devcontainer/devcontainer.json
-capsule run           # picks up the local .devcontainer/ automatically
+capsule init python   # copy "python" into ./.devcontainer/
+capsule run           # local .devcontainer/ takes precedence
 ```
 
-## Install
+## Contents
+
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [How `capsule run` works](#how-capsule-run-works)
+- [Configuration](#configuration)
+- [Command reference](#command-reference)
+- [Troubleshooting](#troubleshooting)
+
+## Installation
 
 ```sh
 uv tool install --editable /path/to/capsule
@@ -29,7 +37,7 @@ npm install -g @devcontainers/cli
 
 Requires Python 3.13+, [uv](https://github.com/astral-sh/uv), and the [devcontainer CLI](https://github.com/devcontainers/cli).
 
-### Getting templates
+## Quick start
 
 The repo ships templates under `templates/`. Add them all at once:
 
@@ -44,13 +52,31 @@ capsule add templates/python
 capsule add templates/python-qt
 ```
 
-To add your own template, point `capsule add` at any directory that contains a `devcontainer.json`:
+To register your own template, point `capsule add` at any directory containing a `devcontainer.json`:
 
 ```sh
 capsule add ~/projects/myapp/.devcontainer --name myapp
 ```
 
-## Configure
+Then run one from any project directory:
+
+```sh
+capsule run python
+```
+
+## How `capsule run` works
+
+If a `.devcontainer/devcontainer.json` exists in the current directory, it is used. Otherwise the named template is used directly from the store, with no copy step.
+
+```sh
+capsule run python                   # use stored template
+capsule run                          # use local .devcontainer/
+capsule run --rebuild                # destroy and recreate the container after edits
+```
+
+Under the hood Capsule calls `devcontainer up` to start the container and run its lifecycle hooks, then `devcontainer exec` to drop you into an interactive shell. Mounts and env from `config.toml` are passed through as flags. Subsequent runs reuse the existing container.
+
+## Configuration
 
 Create `~/.config/capsule/config.toml`. A full example lives at [`templates/config.toml`](templates/config.toml).
 
@@ -70,21 +96,11 @@ TERM = "xterm-256color"
 shell = "/bin/bash"
 ```
 
+`$VAR` references in `[env]` values and mount source paths are expanded from the host shell at runtime, so `DISPLAY = "$DISPLAY"` forwards whatever value the launching shell carries.
+
 Templates live in `~/.config/capsule/templates/` (respects `$XDG_CONFIG_HOME`). Logs go to `~/.config/capsule/capsule.log`.
 
-## How `capsule run` works
-
-If a `.devcontainer/devcontainer.json` exists in the current directory, it is used. Otherwise the named template is used directly from the store, with no copy step.
-
-```sh
-capsule run python                   # use stored template
-capsule run                          # use local .devcontainer/
-capsule run --rebuild                # destroy and recreate the container after edits
-```
-
-Under the hood it calls `devcontainer up` to start the container and run its lifecycle hooks, then `devcontainer exec` to drop you into an interactive shell. Mounts and env from `config.toml` are passed through as flags. Subsequent runs reuse the existing container.
-
-## Commands
+## Command reference
 
 | Command | What it does |
 | --- | --- |
@@ -126,17 +142,3 @@ mounts = ["/tmp/.X11-unix:/tmp/.X11-unix"]
 [env]
 DISPLAY = "$DISPLAY"
 ```
-
-`$VAR` references in `[env]` values and mount source paths are expanded from the host shell at runtime, so `DISPLAY = "$DISPLAY"` forwards whatever value WSL2 set in the launching shell.
-
-## Examples
-
-```sh
-capsule add ./my-devcontainer --name python-custom
-capsule init python --force
-capsule run python --shell /bin/bash
-capsule search ghcr.io
-capsule export python --output ~/backups
-```
-
-`capsule run` without a template argument uses the local `.devcontainer/` if present. Pass a template name to run directly from the store without copying it into the project first.
