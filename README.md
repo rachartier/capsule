@@ -87,27 +87,96 @@ Under the hood Capsule calls `devcontainer up` to start the container and run it
 
 ## Configuration
 
-Create `~/.config/capsule/config.toml`. A full example lives at [`templates/config.toml`](templates/config.toml).
+Capsule reads `~/.config/capsule/config.toml` (or `$XDG_CONFIG_HOME/capsule/config.toml`). The file is optional; copy the template below to get started.
+
+`$VAR` references in `[env]` values and mount source paths are expanded from the host shell at runtime. `~` in source paths is also expanded.
+
+Templates are stored in `~/.config/capsule/templates/`. Logs go to `~/.config/capsule/capsule.log`.
 
 ```toml
 [dotfiles]
-# Mounted into every container. Editor config, shell rc, git, ssh.
+# Personal config files mounted into every container.
+# Format: "host_path:container_path[:options]"
+# ~ and $VAR in host_path are expanded at runtime.
+# Microsoft devcontainer images use /home/vscode; root-based images use /root.
+mounts = [
+    # "~/.bashrc:/root/.bashrc:ro",
+    # "~/.gitconfig:/root/.gitconfig:ro",
+    # "~/.ssh:/root/.ssh:ro",
+]
+
+[volumes]
+# Additional bind mounts applied to every container.
+# Format: "host_path:container_path[:options]"
+mounts = []
+
+[env]
+# Environment variables injected into every container.
+# $VAR values are expanded from the host shell at runtime.
+# TERM = "xterm-256color"
+# DISPLAY = "$DISPLAY"
+
+[run]
+# Shell launched inside the container by `capsule run`.
+shell = "/bin/bash"
+```
+
+### `[dotfiles]`
+
+Mounts applied to every container for personal config files. Kept separate from `[volumes]` so they are not confused with project data.
+
+```toml
+[dotfiles]
 mounts = [
     "~/.bashrc:/root/.bashrc:ro",
     "~/.gitconfig:/root/.gitconfig:ro",
     "~/.ssh:/root/.ssh:ro",
 ]
+```
 
+Format: `"host_path:container_path[:options]"`. The container path must match the container user's home directory. Microsoft devcontainer images use `/home/vscode`; root-based images use `/root`.
+
+Default: `[]`
+
+### `[volumes]`
+
+Additional bind mounts applied to every container, separate from dotfiles.
+
+```toml
+[volumes]
+mounts = [
+    "/data:/data:ro",
+]
+```
+
+Same format as `[dotfiles]`. Both lists are merged and passed to `devcontainer up` as bind mounts.
+
+Default: `[]`
+
+### `[env]`
+
+Environment variables injected into every container. Accepts any key-value pairs.
+
+```toml
 [env]
 TERM = "xterm-256color"
+DISPLAY = "$DISPLAY"
+```
 
+Values are shell-expanded at runtime, so `"$DISPLAY"` forwards whatever the launching shell carries.
+
+Default: none
+
+### `[run]`
+
+```toml
 [run]
 shell = "/bin/bash"
 ```
 
-`$VAR` references in `[env]` values and mount source paths are expanded from the host shell at runtime, so `DISPLAY = "$DISPLAY"` forwards whatever value the launching shell carries.
-
-Templates live in `~/.config/capsule/templates/` (respects `$XDG_CONFIG_HOME`). Logs go to `~/.config/capsule/capsule.log`.
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `shell` | string | `/bin/bash` | Shell launched inside the container by `capsule run`. |
 
 ## Command reference
 
