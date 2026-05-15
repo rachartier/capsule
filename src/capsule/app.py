@@ -51,7 +51,13 @@ def _handle_errors():
     except NoProvenance as e:
         con.error(str(e))
         raise typer.Exit(1) from e
-    except (MissingDevcontainer, InvalidJSON, FileNotFoundError, RemoteFetchError, GitSubpathNotFound) as e:
+    except (
+        MissingDevcontainer,
+        InvalidJSON,
+        FileNotFoundError,
+        RemoteFetchError,
+        GitSubpathNotFound,
+    ) as e:
         con.error(str(e))
         raise typer.Exit(1) from e
     except PermissionError as e:
@@ -67,7 +73,11 @@ def cmd_list() -> None:
         con.info("No templates found. Use 'capsule add' to create one.")
         return
     rows = [
-        [e["name"], e["path"], datetime.fromtimestamp(e["mtime"]).strftime("%Y-%m-%d %H:%M")]
+        [
+            e["name"],
+            e["path"],
+            datetime.fromtimestamp(e["mtime"]).strftime("%Y-%m-%d %H:%M"),
+        ]
         for e in entries
     ]
     con.print_table(["Name", "Path", "Last Modified"], rows)
@@ -77,14 +87,18 @@ def cmd_list() -> None:
 def cmd_add(
     source: Annotated[
         str,
-        typer.Argument(help="Local path, gh:owner/repo[@ref][/subpath], or a git remote URL"),
+        typer.Argument(
+            help="Local path, gh:owner/repo[@ref][/subpath], or a git remote URL"
+        ),
     ],
     name: Annotated[
         str | None, typer.Option("--name", "-n", help="Override template name")
     ] = None,
     ref: Annotated[
         str | None,
-        typer.Option("--ref", help="Git ref (branch/tag/sha). Overrides any inline ref."),
+        typer.Option(
+            "--ref", help="Git ref (branch/tag/sha). Overrides any inline ref."
+        ),
     ] = None,
     subpath: Annotated[
         str | None,
@@ -106,19 +120,29 @@ def cmd_add(
         con.error("--ref and --subpath only apply to git remote sources.")
         raise typer.Exit(1)
 
-    fetch_ctx = con.spinner("Fetching template...") if isinstance(parsed, GitSource) else contextlib.nullcontext()
+    fetch_ctx = (
+        con.spinner("Fetching template...")
+        if isinstance(parsed, GitSource)
+        else contextlib.nullcontext()
+    )
     with _handle_errors(), fetch_ctx, materialize(parsed) as local_path:
         if (local_path / "devcontainer.json").exists():
             template_name = name or _default_template_name(parsed)
             dest = store.add(local_path, template_name)
             if isinstance(parsed, GitSource):
-                store.save_provenance(template_name, parsed.url, parsed.ref, parsed.subpath)
+                store.save_provenance(
+                    template_name, parsed.url, parsed.ref, parsed.subpath
+                )
             con.success(f"Template '{template_name}' added at {dest}")
         else:
             if name is not None:
                 con.error("--name cannot be used when adding a directory of templates.")
                 raise typer.Exit(1)
-            if _add_all_templates(local_path, store, git_source=parsed if isinstance(parsed, GitSource) else None):
+            if _add_all_templates(
+                local_path,
+                store,
+                git_source=parsed if isinstance(parsed, GitSource) else None,
+            ):
                 raise typer.Exit(1)
 
 
@@ -137,7 +161,9 @@ def _add_all_templates(
     git_source: GitSource | None = None,
 ) -> bool:
     candidates = sorted(
-        d for d in directory.iterdir() if d.is_dir() and (d / "devcontainer.json").exists()
+        d
+        for d in directory.iterdir()
+        if d.is_dir() and (d / "devcontainer.json").exists()
     )
     if not candidates:
         con.error(f"No template directories found in {directory}.")
@@ -154,10 +180,17 @@ def _add_all_templates(
             if git_source is not None:
                 base = git_source.subpath or ""
                 subpath = f"{base}/{d.name}" if base else d.name
-                template_store.save_provenance(d.name, git_source.url, git_source.ref, subpath)
+                template_store.save_provenance(
+                    d.name, git_source.url, git_source.ref, subpath
+                )
         except TemplateAlreadyExists:
             skipped.append(d.name)
-        except (FileNotFoundError, MissingDevcontainer, InvalidJSON, PermissionError) as e:
+        except (
+            FileNotFoundError,
+            MissingDevcontainer,
+            InvalidJSON,
+            PermissionError,
+        ) as e:
             errors.append((d.name, str(e)))
 
     for n in added:
@@ -172,8 +205,12 @@ def _add_all_templates(
 
 @app.command("delete")
 def cmd_delete(
-    template_name: Annotated[str, typer.Argument(help="Name of the template to delete")],
-    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation prompt")] = False,
+    template_name: Annotated[
+        str, typer.Argument(help="Name of the template to delete")
+    ],
+    force: Annotated[
+        bool, typer.Option("--force", "-f", help="Skip confirmation prompt")
+    ] = False,
 ) -> None:
     """Delete a template."""
     if not force and not con.confirm(f"Delete template '{template_name}'?"):
@@ -186,7 +223,9 @@ def cmd_delete(
 
 @app.command("update")
 def cmd_update(
-    source_path: Annotated[str, typer.Argument(help="Path to the source devcontainer folder")],
+    source_path: Annotated[
+        str, typer.Argument(help="Path to the source devcontainer folder")
+    ],
     name: Annotated[
         str | None, typer.Option("--name", "-n", help="Override template name")
     ] = None,
@@ -212,12 +251,16 @@ def cmd_rename(
 
 @app.command("pull")
 def cmd_pull(
-    template_name: Annotated[str, typer.Argument(help="Name of the template to re-fetch")],
+    template_name: Annotated[
+        str, typer.Argument(help="Name of the template to re-fetch")
+    ],
 ) -> None:
     """Re-fetch a template from its recorded git source."""
     with _handle_errors():
         data = store.load_provenance(template_name)
-        source = GitSource(url=data["url"], ref=data.get("ref"), subpath=data.get("subpath"))
+        source = GitSource(
+            url=data["url"], ref=data.get("ref"), subpath=data.get("subpath")
+        )
         with con.spinner("Fetching template..."), materialize(source) as local_path:
             store.update(template_name, local_path)
         store.save_provenance(template_name, source.url, source.ref, source.subpath)
@@ -236,7 +279,9 @@ def cmd_view(
 
 @app.command("search")
 def cmd_search(
-    keyword: Annotated[str, typer.Argument(help="Keyword to search for (case-insensitive)")],
+    keyword: Annotated[
+        str, typer.Argument(help="Keyword to search for (case-insensitive)")
+    ],
 ) -> None:
     """Search all templates' devcontainer.json for a keyword."""
     results = store.search(keyword)
@@ -249,7 +294,9 @@ def cmd_search(
 
 @app.command("export")
 def cmd_export(
-    template_name: Annotated[str, typer.Argument(help="Name of the template to export")],
+    template_name: Annotated[
+        str, typer.Argument(help="Name of the template to export")
+    ],
     output: Annotated[
         str, typer.Option("--output", "-o", help="Output directory for the zip archive")
     ] = ".",
@@ -303,7 +350,15 @@ def _find_container_cli() -> str | None:
 
 
 def _list_devcontainers(cli: str) -> list[dict]:
-    cmd = [cli, "ps", "--all", "--format", "{{json .}}", "--filter", "label=devcontainer.local_folder"]
+    cmd = [
+        cli,
+        "ps",
+        "--all",
+        "--format",
+        "{{json .}}",
+        "--filter",
+        "label=devcontainer.local_folder",
+    ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     containers = []
     for raw in result.stdout.splitlines():
@@ -343,10 +398,15 @@ def cmd_ps() -> None:
 def cmd_stop(
     workspace: Annotated[
         str | None,
-        typer.Argument(help="Workspace path whose container to stop (default: current directory)"),
+        typer.Argument(
+            help="Workspace path whose container to stop (default: current directory)"
+        ),
     ] = None,
     force: Annotated[
-        bool, typer.Option("--force", "-f", help="Force-remove the container (stop + delete)")
+        bool,
+        typer.Option(
+            "--force", "-f", help="Force-remove the container (stop + delete)"
+        ),
     ] = False,
     remove: Annotated[
         bool, typer.Option("--rm", help="Remove the container after stopping")
@@ -358,7 +418,9 @@ def cmd_stop(
         con.error("docker or podman not found in PATH.")
         raise typer.Exit(1)
     target = str(Path(workspace).resolve() if workspace else Path.cwd())
-    matching = [c for c in _list_devcontainers(cli) if _container_workspace(c) == target]
+    matching = [
+        c for c in _list_devcontainers(cli) if _container_workspace(c) == target
+    ]
     if not matching:
         con.error(f"No devcontainer found for {target}.")
         raise typer.Exit(1)
@@ -395,9 +457,14 @@ def _ensure_container_up(
     config_path: str | None = None
 
     if local.exists():
-        label = ".devcontainer/"
+        try:
+            label = json.loads(local.read_text()).get("name", ".devcontainer/")
+        except Exception:
+            label = ".devcontainer/"
         if template_name:
-            con.info(f"Local .devcontainer/ found, ignoring template '{template_name}'.")
+            con.info(
+                f"Local .devcontainer/ found, ignoring template '{template_name}'."
+            )
     elif template_name:
         with _handle_errors():
             _, json_path = store.view(template_name)
@@ -435,12 +502,23 @@ def _ensure_container_up(
     for k, v in cfg.env.items():
         up_cmd.extend(["--remote-env", f"{k}={v}"])
 
-    con.info(f"Starting '{label}' ...")
     log.info("devcontainer up: %s", " ".join(up_cmd))
-    result = subprocess.run(up_cmd)
-    if result.returncode != 0:
+    lines: list[str] = []
+    proc = subprocess.Popen(
+        up_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
+    assert proc.stdout
+    with con.launching(f"Starting '{label}'...", quiet=cfg.quiet) as on_line:
+        for raw in proc.stdout:
+            line = raw.rstrip("\n")
+            lines.append(line)
+            on_line(line)
+        proc.wait()
+    if proc.returncode != 0:
+        if cfg.quiet:
+            con.subprocess_output("\n".join(lines))
         con.error("devcontainer up failed.")
-        raise typer.Exit(result.returncode)
+        raise typer.Exit(proc.returncode)
 
     return config_path, cfg, cwd_str
 
@@ -461,7 +539,9 @@ def cmd_run(
         str | None,
         typer.Argument(help="Template to run (optional if .devcontainer/ exists)"),
     ] = None,
-    shell: Annotated[str | None, typer.Option("--shell", "-s", help="Shell override")] = None,
+    shell: Annotated[
+        str | None, typer.Option("--shell", "-s", help="Shell override")
+    ] = None,
     rebuild: Annotated[
         bool, typer.Option("--rebuild", help="Destroy and recreate the container")
     ] = False,

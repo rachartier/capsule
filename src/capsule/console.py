@@ -1,6 +1,8 @@
+import contextlib
 import itertools
 import logging
 import os
+import re
 import select
 import sys
 import termios
@@ -14,11 +16,20 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.rule import Rule
+from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
 log = logging.getLogger(__name__)
 _console = Console(highlight=False)
+
+# Matches ANSI/VT100 escape sequences (CSI, OSC with BEL or ST terminator, two-char escapes).
+_ANSI_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[^[])")
+
+
+def _clean(line: str) -> str:
+    # \r is used by progress bars to overwrite the current line; keep the last segment.
+    return _ANSI_RE.sub("", line.rsplit("\r", 1)[-1])
 
 
 def error(msg: str, hint: str | None = None) -> None:
@@ -46,6 +57,18 @@ def confirm(msg: str) -> bool:
 
 def spinner(label: str):
     return _console.status(label, spinner="dots")
+
+
+@contextlib.contextmanager
+def launching(label: str, quiet: bool):
+    _spinner = Spinner("dots", text=f" {label}", style="cyan")
+    with Live(_spinner, auto_refresh=True, console=_console, transient=True, refresh_per_second=12.5):
+        def _on_line(line: str) -> None:
+            if not quiet:
+                clean = _clean(line)
+                if clean:
+                    _console.print(f"  [dim]{escape(clean)}[/]")
+        yield _on_line
 
 
 def _read_key() -> str:
@@ -163,6 +186,13 @@ def _highlight_matches(target: str, positions: list[int]) -> str:
     if in_match:
         parts.append("[/bold]")
     return "".join(parts)
+
+
+def subprocess_output(text: str) -> None:
+    for line in text.splitlines():
+        clean = _clean(line)
+        if clean:
+            _console.print(f"{escape(clean)}")
 
 
 def print_table(headers: list[str], rows: list[list[str]]) -> None:
