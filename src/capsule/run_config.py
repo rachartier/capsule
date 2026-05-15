@@ -18,7 +18,7 @@ class RunConfig:
     def load(cls, path: Path) -> "RunConfig":
         if not path.exists():
             return cls()
-        with open(path, "rb") as f:
+        with path.open("rb") as f:
             data = tomllib.load(f)
         return cls(
             mounts=list(data.get("volumes", {}).get("mounts", [])),

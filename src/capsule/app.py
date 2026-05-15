@@ -106,7 +106,8 @@ def cmd_add(
         con.error("--ref and --subpath only apply to git remote sources.")
         raise typer.Exit(1)
 
-    with _handle_errors(), materialize(parsed) as local_path:
+    fetch_ctx = con.spinner("Fetching template...") if isinstance(parsed, GitSource) else contextlib.nullcontext()
+    with _handle_errors(), fetch_ctx, materialize(parsed) as local_path:
         if (local_path / "devcontainer.json").exists():
             template_name = name or _default_template_name(parsed)
             dest = store.add(local_path, template_name)
@@ -217,7 +218,7 @@ def cmd_pull(
     with _handle_errors():
         data = store.load_provenance(template_name)
         source = GitSource(url=data["url"], ref=data.get("ref"), subpath=data.get("subpath"))
-        with materialize(source) as local_path:
+        with con.spinner("Fetching template..."), materialize(source) as local_path:
             store.update(template_name, local_path)
         store.save_provenance(template_name, source.url, source.ref, source.subpath)
         con.success(f"Template '{template_name}' updated from {source.url}")
@@ -410,7 +411,7 @@ def _ensure_container_up(
                 "Run `capsule add` to store a template first.",
             )
             raise typer.Exit(1)
-        con.info("No template given. Pick one:")
+        con.info("Select a template to run:")
         picked = con.pick([e["name"] for e in entries])
         if picked is None:
             con.info("Aborted.")
@@ -421,8 +422,7 @@ def _ensure_container_up(
         label = picked
 
     cfg = RunConfig.load(CONFIG_FILE)
-    cwd = Path.cwd()
-    cwd_str = str(cwd)
+    cwd_str = str(Path.cwd())
 
     up_cmd = ["devcontainer", "up", "--workspace-folder", cwd_str]
     if rebuild:

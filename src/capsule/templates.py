@@ -118,7 +118,7 @@ class TemplateStore:
             if not json_path.exists():
                 continue
             try:
-                data = cast(object, json.loads(json_path.read_text(encoding="utf-8")))
+                data: object = json.loads(json_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError:
                 continue
             for field, snippet in self._flatten(data):

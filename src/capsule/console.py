@@ -1,97 +1,185 @@
-import json
+import itertools
 import logging
+import os
+import select
 import sys
+import termios
+import tty
+
+from rich import box
+from rich.console import Console, Group
+from rich.json import JSON
+from rich.live import Live
+from rich.markup import escape
+from rich.panel import Panel
+from rich.prompt import Confirm
+from rich.rule import Rule
+from rich.table import Table
+from rich.text import Text
 
 log = logging.getLogger(__name__)
-
-_RST = "\033[0m"
-_BOLD = "\033[1m"
-_DIM = "\033[2m"
-_RED = "\033[31m"
-_GRN = "\033[32m"
-_BLU = "\033[34m"
-
-
-_IS_TTY: bool = sys.stdout.isatty()
-
-
-def _c(*codes: str, text: str) -> str:
-    return ("".join(codes) + text + _RST) if _IS_TTY else text
+_console = Console(highlight=False)
 
 
 def error(msg: str, hint: str | None = None) -> None:
     log.error(msg)
-    print(_c(_BOLD, _RED, text="!") + " " + msg)
+    _console.print(f"[bold red]![/] {msg}")
     if hint:
-        print("  " + _c(_DIM, text=hint))
+        _console.print(f"  [dim]{hint}[/]")
 
 
 def success(msg: str) -> None:
-    print(_c(_BOLD, _GRN, text="✓") + " " + msg)
+    _console.print(f"[bold green]✓[/] {msg}")
 
 
 def info(msg: str) -> None:
-    print(_c(_BLU, text="*") + " " + msg)
+    _console.print(f"[cyan]*[/] {msg}")
 
 
 def confirm(msg: str) -> bool:
     try:
-        return input(f"{msg} [y/N] ").strip().lower() in ("y", "yes")
+        return Confirm.ask(msg, default=False, console=_console)
     except (EOFError, KeyboardInterrupt):
-        print()
+        _console.print()
         return False
 
 
-def _fuzzy_match(query: str, target: str) -> bool:
-    it = iter(target.lower())
-    return all(c in it for c in query.lower())
+def spinner(label: str):
+    return _console.status(label, spinner="dots")
+
+
+def _read_key() -> str:
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        # os.read bypasses Python's BufferedReader: sys.stdin.read(1) would consume
+        # the full escape sequence in one OS read(), leaving the kernel buffer empty
+        # so select.select() finds nothing and arrow keys collapse to bare \x1b.
+        ch = os.read(fd, 1)
+        if ch == b"\x1b":
+            r, _, _ = select.select([fd], [], [], 0.05)
+            if r:
+                ch += os.read(fd, 8)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    return ch.decode("utf-8", errors="replace")
 
 
 def pick(options: list[str]) -> str | None:
     if not options:
         return None
-    current = list(options)
-    while True:
-        for i, opt in enumerate(current, 1):
-            print(f"  {_c(_BOLD, _BLU, text=str(i).rjust(2))}  {opt}")
-        try:
-            raw = input("Select number or filter: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return None
-        if not raw:
-            continue
-        if raw.isdigit() and 1 <= int(raw) <= len(current):
-            return current[int(raw) - 1]
-        filtered = [o for o in options if _fuzzy_match(raw, o)]
-        if not filtered:
-            info(f"No matches for '{raw}'.")
-        elif len(filtered) == 1:
-            return filtered[0]
-        else:
-            current = filtered
+    if len(options) == 1:
+        return options[0]
+
+    query = ""
+    sel = 0
+    total = len(options)
+
+    def _filtered() -> list[tuple[str, list[int] | None]]:
+        if not query:
+            return [(o, None) for o in options]
+        matched = [
+            (o, pos) for o in options if (pos := _fuzzy_positions(query, o)) is not None
+        ]
+        matched.sort(key=lambda x: _match_score(x[1]))  # type: ignore[arg-type]
+        return matched
+
+    def _render(items: list[tuple[str, list[int] | None]]) -> Group:
+        lines: list = [
+            Text.from_markup(f"  [cyan]>[/] {escape(query)}[blink]▌[/]"),
+            Rule(style="dim"),
+        ]
+        for i, (opt, positions) in enumerate(items):
+            label = _highlight_matches(opt, positions) if positions else escape(opt)
+            if i == sel:
+                lines.append(Text.from_markup(f"  [bold cyan]▶[/]  {label}"))
+            else:
+                lines.append(Text.from_markup(f"     {label}"))
+        n = len(items)
+        suffix = (
+            f"[dim]{n} of {total}[/]"
+            if n != total
+            else f"[dim]{total} template{'s' if total != 1 else ''}[/]"
+        )
+        lines.append(Text.from_markup(f"\n  {suffix}"))
+        return Group(*lines)
+
+    with Live(
+        _render(_filtered()), console=_console, auto_refresh=False, transient=True
+    ) as live:
+        while True:
+            items = _filtered()
+            sel = min(sel, max(len(items) - 1, 0))
+            live.update(_render(items), refresh=True)
+            key = _read_key()
+            if key in ("\r", "\n"):
+                return items[sel][0] if items else None
+            if key in ("\x03", "\x1b"):
+                return None
+            if key == "\x1b[A":
+                sel = max(0, sel - 1)
+            elif key == "\x1b[B":
+                sel = min(len(items) - 1, sel + 1) if items else 0
+            elif key == "\x7f":
+                query = query[:-1]
+                sel = 0
+            elif key.isprintable():
+                query += key
+                sel = 0
+
+
+def _fuzzy_positions(query: str, target: str) -> list[int] | None:
+    positions: list[int] = []
+    qi = 0
+    q = query.lower()
+    for ti, c in enumerate(target.lower()):
+        if c == q[qi]:
+            positions.append(ti)
+            qi += 1
+            if qi == len(q):
+                return positions
+    return None
+
+
+def _match_score(positions: list[int]) -> tuple[int, int]:
+    consecutive = sum(1 for a, b in itertools.pairwise(positions) if b == a + 1)
+    return (positions[0], -consecutive)
+
+
+def _highlight_matches(target: str, positions: list[int]) -> str:
+    pos_set = set(positions)
+    parts: list[str] = []
+    in_match = False
+    for i, c in enumerate(target):
+        is_match = i in pos_set
+        if is_match and not in_match:
+            parts.append("[bold]")
+            in_match = True
+        elif not is_match and in_match:
+            parts.append("[/bold]")
+            in_match = False
+        parts.append(escape(c))
+    if in_match:
+        parts.append("[/bold]")
+    return "".join(parts)
 
 
 def print_table(headers: list[str], rows: list[list[str]]) -> None:
-    widths = [len(h) for h in headers]
+    table = Table(
+        box=box.ASCII,
+        show_edge=False,
+        pad_edge=False,
+        header_style="bold blue",
+    )
+    for h in headers:
+        table.add_column(h, overflow="fold")
     for row in rows:
-        for i, cell in enumerate(row):
-            widths[i] = max(widths[i], len(cell))
-
-    def _row(cells: list[str], bold: bool = False) -> str:
-        line = "  ".join(c.ljust(widths[i]) for i, c in enumerate(cells))
-        return _c(_BOLD, _BLU, text=line) if bold else line
-
-    print(_row(headers, bold=True))
-    print(_c(_DIM, text="  ".join("-" * w for w in widths)))
-    for row in rows:
-        print(_row(row))
+        table.add_row(*row)
+    _console.print(table)
+    n = len(rows)
+    _console.print(f"  [dim]{n} item{'s' if n != 1 else ''}[/]\n")
 
 
 def print_json(raw: str, title: str) -> None:
-    bar = "--- " + title
-    print(_c(_BLU, text=bar))
-    obj = json.loads(raw)
-    for line in json.dumps(obj, indent=2).splitlines():
-        print(line)
-    print()
+    _console.print(Panel(JSON(raw), title=f"[dim]{title}[/]", border_style="dim blue"))
