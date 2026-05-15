@@ -456,20 +456,16 @@ def _ensure_container_up(
     local = Path.cwd() / ".devcontainer" / "devcontainer.json"
     config_path: str | None = None
 
-    if local.exists():
-        try:
-            label = json.loads(local.read_text()).get("name", ".devcontainer/")
-        except Exception:
-            label = ".devcontainer/"
-        if template_name:
-            con.info(
-                f"Local .devcontainer/ found, ignoring template '{template_name}'."
-            )
-    elif template_name:
+    if template_name:
         with _handle_errors():
             _, json_path = store.view(template_name)
             config_path = str(json_path)
         label = template_name
+    elif local.exists():
+        try:
+            label = json.loads(local.read_text()).get("name", ".devcontainer/")
+        except Exception:
+            label = ".devcontainer/"
     else:
         entries = store.list_templates()
         if not entries:
@@ -508,7 +504,7 @@ def _ensure_container_up(
         up_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
     assert proc.stdout
-    with con.launching(f"Starting '{label}'...", quiet=cfg.quiet) as on_line:
+    with con.launching(f"Starting devcontainer '{label}'...", quiet=cfg.quiet) as on_line:
         for raw in proc.stdout:
             line = raw.rstrip("\n")
             lines.append(line)
