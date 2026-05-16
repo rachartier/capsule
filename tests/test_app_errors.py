@@ -36,7 +36,7 @@ def _add_template(store: TemplateStore, tmp_path: Path, name: str) -> None:
 
 def test_handle_errors_template_not_found() -> None:
     with pytest.raises(typer.Exit) as exc_info, _handle_errors():
-        raise TemplateNotFound("Template 'foo' not found")
+        raise TemplateNotFound("foo")
     assert exc_info.value.exit_code == 1
 
 
@@ -76,9 +76,9 @@ def test_handle_errors_suggests_close_match(
     isolated_store: TemplateStore, tmp_path: Path
 ) -> None:
     _add_template(isolated_store, tmp_path, "python")
-    with pytest.raises(typer.Exit), _handle_errors():
-        raise TemplateNotFound("Template 'pytho' not found")
-    # We can't easily capture console output here; verify no crash and exit code 1
+    result = runner.invoke(app, ["view", "pytho"])
+    assert result.exit_code == 1
+    assert "Did you mean 'python'" in result.output
 
 
 # -- capsule list --

@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import pytest
@@ -60,10 +61,9 @@ def test_load_env_warns_on_undefined_var(
 ) -> None:
     p = tmp_path / "config.toml"
     _write(p, '[env]\nBAD = "$CAPSULE_UNDEFINED_VAR_XYZ/bin"\n')
-    import logging
     with caplog.at_level(logging.WARNING, logger="capsule.run_config"):
         RunConfig.load(p)
-    assert any("CAPSULE_UNDEFINED_VAR_XYZ" in r.message or "BAD" in r.message for r in caplog.records)
+    assert any("CAPSULE_UNDEFINED_VAR_XYZ" in r.message for r in caplog.records)
 
 
 def test_expand_mount_tilde() -> None:

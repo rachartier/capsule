@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -39,12 +40,13 @@ def test_add_all_skips_conflict(tmp_path, store):
     _make_template(src, "node")
 
     (store._dir / "python").mkdir()
-    (store._dir / "python" / "devcontainer.json").write_text('{"name":"python"}')
+    (store._dir / "python" / "devcontainer.json").write_text('{"name": "original"}')
 
     had_errors = _add_all_templates(src, store)
 
     assert not had_errors
     assert (store._dir / "node").is_dir()
+    assert json.loads((store._dir / "python" / "devcontainer.json").read_text())["name"] == "original"
 
 
 def test_add_all_conflict_only(tmp_path, store):
