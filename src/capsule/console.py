@@ -211,5 +211,17 @@ def print_table(headers: list[str], rows: list[list[str]]) -> None:
     _console.print(f"  [dim]{n} item{'s' if n != 1 else ''}[/]\n")
 
 
+def print_template_header(name: str, description: str, author: str) -> None:
+    pairs: list[tuple[str, str]] = [("Template", name)]
+    if description:
+        pairs.append(("Description", description))
+    if author:
+        pairs.append(("Author", author))
+    width = max(len(k) for k, _ in pairs)
+    for key, val in pairs:
+        _console.print(f"[dim]{key:<{width}}[/]  {escape(val)}")
+    _console.print()
+
+
 def print_json(raw: str, title: str) -> None:
     _console.print(Panel(JSON(raw), title=f"[dim]{title}[/]", border_style="dim blue"))

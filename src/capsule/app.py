@@ -288,15 +288,12 @@ def cmd_view(
         raw, path = store.view(template_name)
         meta = store.load_meta(template_name)
     if meta:
-        parts = [template_name]
-        if meta.get("description"):
-            parts.append(meta["description"])
-        if meta.get("author"):
-            parts.append(f"by {meta['author']}")
-        title = " — ".join(parts)
-    else:
-        title = str(path)
-    con.print_json(raw, title)
+        con.print_template_header(
+            template_name,
+            meta.get("description", ""),
+            meta.get("author", ""),
+        )
+    con.print_json(raw, str(path))
 
 
 @app.command("search")
