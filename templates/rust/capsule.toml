@@ -1,0 +1,3 @@
+[meta]
+description = "Rust with clippy, rustfmt, and rust-src on the official devcontainer image"
+author = "Raphaël CHARTIER"

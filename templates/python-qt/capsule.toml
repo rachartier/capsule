@@ -1,0 +1,3 @@
+[meta]
+description = "Python with Qt/GUI support via a custom Dockerfile and uv"
+author = "Raphaël CHARTIER"

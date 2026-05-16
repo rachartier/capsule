@@ -88,7 +88,13 @@ Under the hood Capsule calls `devcontainer up` to start the container and run it
 
 ## Configuration
 
-Capsule reads `~/.config/capsule/config.toml` (or `$XDG_CONFIG_HOME/capsule/config.toml`). The file is optional; copy the template below to get started.
+Capsule reads `~/.config/capsule/config.toml` (or `$XDG_CONFIG_HOME/capsule/config.toml`). Generate the file with defaults:
+
+```sh
+capsule config init
+```
+
+The file is optional; all settings have defaults.
 
 `$VAR` references in `[env]` values and mount source paths are expanded from the host shell at runtime. `~` in source paths is also expanded.
 
@@ -186,23 +192,59 @@ quiet = true
 
 ## Command reference
 
+### Template management
+
 | Command | What it does |
 | --- | --- |
-| `capsule list` | List stored templates with path and last modified date. |
+| `capsule list` | List stored templates with description and last modified date. |
 | `capsule add <source> [--name <n>] [--ref <ref>] [--subpath <dir>]` | Store a template from a local directory, `gh:owner/repo[/subpath]`, or any git URL. `--ref` overrides branch/tag, `--subpath` selects a subdirectory. |
-| `capsule init <template> [--output <dir>] [--force]` | Copy a template into the current project as `.devcontainer/`. |
-| `capsule run [<template>] [--shell <sh>] [--rebuild]` | Start the devcontainer and open a shell. |
-| `capsule exec [<template>] <command...> [--rebuild]` | Run a one-shot command in the devcontainer. Uses local `.devcontainer/` if present, otherwise the first positional is the template name. |
 | `capsule view <template>` | Pretty-print a template's `devcontainer.json`. |
+| `capsule edit <template>` | Open a template's `devcontainer.json` in `$EDITOR`. |
+| `capsule meta <template> [--description <d>] [--author <a>]` | View or set metadata (description, author) for a template. |
 | `capsule search <keyword>` | Case-insensitive search across all templates' `devcontainer.json`. |
 | `capsule update <path> [--name <n>]` | Replace the `devcontainer.json` in a stored template from a folder. |
 | `capsule rename <old> <new>` | Rename a stored template. |
 | `capsule delete <template> [--force]` | Delete a stored template. |
 | `capsule export <template> [--output <dir>]` | Export a template as a `.zip` archive. |
 | `capsule pull <template>` | Re-fetch a template from its recorded git source and replace it in the store. |
+
+### Running containers
+
+| Command | What it does |
+| --- | --- |
+| `capsule init <template> [--output <dir>] [--force]` | Copy a template into the current project as `.devcontainer/`. |
+| `capsule run [<template>] [--shell <sh>] [--rebuild] [--dry-run]` | Start the devcontainer and open a shell. `--dry-run` prints the commands without executing. |
+| `capsule exec [<template>] <command...> [--rebuild]` | Run a one-shot command in the devcontainer. Uses local `.devcontainer/` if present, otherwise the first positional is the template name. |
 | `capsule ps` | List all capsule devcontainers (running and stopped). |
 | `capsule stop [<workspace>] [--force] [--rm]` | Stop the devcontainer for the current directory or given workspace path. `--force` skips confirmation, `--rm` removes the container. |
+
+### Configuration and diagnostics
+
+| Command | What it does |
+| --- | --- |
 | `capsule config` | Show resolved config from `config.toml`. |
+| `capsule config init [--force]` | Generate a default `config.toml` in the capsule config directory. |
+| `capsule doctor` | Check that the environment is healthy: devcontainer CLI, container runtime, all stored templates, and `config.toml` validity. |
+
+### Template metadata
+
+Annotate stored templates with a description and author:
+
+```sh
+capsule meta python --description "Python 3.12 with uv" --author "Alice"
+capsule meta python       # view current metadata
+capsule list              # description column shown in the listing
+```
+
+Metadata is stored in `capsule.toml` inside the template directory alongside git provenance.
+
+### Dry-run mode
+
+Preview the `devcontainer` commands that `capsule run` would execute without starting anything:
+
+```sh
+capsule run python --dry-run
+```
 
 ## Troubleshooting
 
