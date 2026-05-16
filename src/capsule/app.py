@@ -1,9 +1,11 @@
 import contextlib
+import difflib
 import json
 import logging
 import os
 import shutil
 import subprocess
+import tomllib
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -40,7 +42,17 @@ def _handle_errors():
     try:
         yield
     except TemplateNotFound as e:
-        con.error(str(e), "Run `capsule list` to see available templates.")
+        hint = "Run `capsule list` to see available templates."
+        msg = str(e)
+        start = msg.find("'")
+        end = msg.find("'", start + 1)
+        if start != -1 and end != -1:
+            queried = msg[start + 1 : end]
+            names = [t["name"] for t in store.list_templates()]
+            matches = difflib.get_close_matches(queried, names, n=1, cutoff=0.6)
+            if matches:
+                hint = f"Did you mean '{matches[0]}'? {hint}"
+        con.error(msg, hint)
         raise typer.Exit(1) from e
     except TemplateAlreadyExists as e:
         con.error(str(e))
@@ -75,12 +87,12 @@ def cmd_list() -> None:
     rows = [
         [
             e["name"],
-            e["path"],
+            e.get("description", ""),
             datetime.fromtimestamp(e["mtime"]).strftime("%Y-%m-%d %H:%M"),
         ]
         for e in entries
     ]
-    con.print_table(["Name", "Path", "Last Modified"], rows)
+    con.print_table(["Name", "Description", "Last Modified"], rows)
 
 
 @app.command("add")
@@ -274,7 +286,17 @@ def cmd_view(
     """Pretty-print a template's devcontainer.json."""
     with _handle_errors():
         raw, path = store.view(template_name)
-        con.print_json(raw, str(path))
+        meta = store.load_meta(template_name)
+    if meta:
+        parts = [template_name]
+        if meta.get("description"):
+            parts.append(meta["description"])
+        if meta.get("author"):
+            parts.append(f"by {meta['author']}")
+        title = " — ".join(parts)
+    else:
+        title = str(path)
+    con.print_json(raw, title)
 
 
 @app.command("search")
@@ -325,9 +347,60 @@ def cmd_init(
         con.success(f"Initialized '{template_name}' at {result}")
 
 
-@app.command("config")
-def cmd_config() -> None:
+@app.command("edit")
+def cmd_edit(
+    template_name: Annotated[str, typer.Argument(help="Template to edit")],
+) -> None:
+    """Open a template's devcontainer.json in $EDITOR."""
+    with _handle_errors():
+        _, json_path = store.view(template_name)
+    editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "nano"
+    os.execvp(editor, [editor, str(json_path)])
+
+
+@app.command("meta")
+def cmd_meta(
+    template_name: Annotated[
+        str, typer.Argument(help="Template to view or update metadata for")
+    ],
+    description: Annotated[
+        str | None,
+        typer.Option("--description", "-d", help="Set a description for the template"),
+    ] = None,
+    author: Annotated[
+        str | None,
+        typer.Option("--author", "-a", help="Set the template author"),
+    ] = None,
+) -> None:
+    """View or set metadata (description, author) for a stored template."""
+    with _handle_errors():
+        if description is None and author is None:
+            meta = store.load_meta(template_name)
+            if not meta:
+                con.info(f"No metadata set for '{template_name}'.")
+            else:
+                con.print_table(["Key", "Value"], [[k, v] for k, v in sorted(meta.items())])
+        else:
+            store.save_meta(template_name, description, author)
+            con.success(f"Metadata updated for '{template_name}'.")
+
+
+# Config is a sub-app so `capsule config` shows the config and
+# `capsule config init` generates the default file.
+config_app = typer.Typer(
+    name="config",
+    help="Show or initialize the capsule configuration.",
+    invoke_without_command=True,
+    no_args_is_help=False,
+)
+app.add_typer(config_app)
+
+
+@config_app.callback()
+def cmd_config(ctx: typer.Context) -> None:
     """Show the resolved configuration that will be applied on capsule run."""
+    if ctx.invoked_subcommand is not None:
+        return
     if not CONFIG_FILE.exists():
         con.info(f"No config file found at {CONFIG_FILE}. Using defaults.")
         return
@@ -340,6 +413,43 @@ def cmd_config() -> None:
     for k, v in cfg.env.items():
         rows.append(["env", f"{k}={v}"])
     con.print_table(["Key", "Value"], rows)
+
+
+@config_app.command("init")
+def cmd_config_init(
+    force: Annotated[
+        bool, typer.Option("--force", "-f", help="Overwrite if already exists")
+    ] = False,
+) -> None:
+    """Generate a default config.toml in the capsule config directory."""
+    if CONFIG_FILE.exists() and not force:
+        con.error(
+            f"Config file already exists at {CONFIG_FILE}.",
+            "Use --force to overwrite.",
+        )
+        raise typer.Exit(1)
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_FILE.write_text(
+        """\
+# capsule configuration
+# https://github.com/rachartier/capsule
+
+[volumes]
+# mounts = ["~/my-dir:/home/user/my-dir"]
+
+[dotfiles]
+# mounts = ["~/.zshrc:/home/user/.zshrc"]
+
+[env]
+# MY_VAR = "value"
+
+[run]
+shell = "/bin/bash"
+quiet = true
+""",
+        encoding="utf-8",
+    )
+    con.success(f"Created config file at {CONFIG_FILE}")
 
 
 def _find_container_cli() -> str | None:
@@ -364,8 +474,10 @@ def _list_devcontainers(cli: str) -> list[dict]:
     for raw in result.stdout.splitlines():
         stripped = raw.strip()
         if stripped:
-            with contextlib.suppress(json.JSONDecodeError):
+            try:
                 containers.append(json.loads(stripped))
+            except json.JSONDecodeError:
+                log.warning("Could not parse container list output: %r", stripped)
     return containers
 
 
@@ -442,9 +554,63 @@ def cmd_stop(
                 con.success(f"Removed container {name}.")
 
 
+@app.command("doctor")
+def cmd_doctor() -> None:
+    """Check that the capsule environment is healthy."""
+    all_ok = True
+
+    if shutil.which("devcontainer"):
+        con.success("devcontainer CLI found in PATH.")
+    else:
+        con.error(
+            "devcontainer CLI not found.",
+            "Install with: npm install -g @devcontainers/cli",
+        )
+        all_ok = False
+
+    cli = _find_container_cli()
+    if cli:
+        con.success(f"{cli} found in PATH.")
+    else:
+        con.error("No container runtime (docker/podman) found in PATH.")
+        all_ok = False
+
+    templates = store.list_templates()
+    if not templates:
+        con.info("No stored templates to validate.")
+    else:
+        for entry in templates:
+            json_path = Path(entry["path"]) / "devcontainer.json"
+            if not json_path.exists():
+                con.error(f"Template '{entry['name']}': missing devcontainer.json")
+                all_ok = False
+            else:
+                try:
+                    json.loads(json_path.read_text(encoding="utf-8"))
+                    con.success(f"Template '{entry['name']}': OK")
+                except json.JSONDecodeError as e:
+                    con.error(f"Template '{entry['name']}': invalid JSON: {e}")
+                    all_ok = False
+
+    if CONFIG_FILE.exists():
+        try:
+            with CONFIG_FILE.open("rb") as f:
+                tomllib.load(f)
+            con.success("config.toml is valid.")
+        except Exception as e:
+            con.error(f"config.toml is invalid: {e}")
+            all_ok = False
+    else:
+        con.info(f"No config.toml at {CONFIG_FILE} (using defaults).")
+
+    if not all_ok:
+        raise typer.Exit(1)
+
+
 def _ensure_container_up(
     template_name: str | None,
     rebuild: bool = False,
+    dry_run: bool = False,
 ) -> tuple[str | None, RunConfig, str]:
     if shutil.which("devcontainer") is None:
         con.error(
@@ -498,12 +664,17 @@ def _ensure_container_up(
     for k, v in cfg.env.items():
         up_cmd.extend(["--remote-env", f"{k}={v}"])
 
+    if dry_run:
+        con.info("Would run: " + " ".join(up_cmd))
+        return config_path, cfg, cwd_str
+
     log.info("devcontainer up: %s", " ".join(up_cmd))
     lines: list[str] = []
     proc = subprocess.Popen(
         up_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
-    assert proc.stdout
+    if proc.stdout is None:
+        raise RuntimeError("Failed to open subprocess stdout pipe")
     with con.launching(f"Starting devcontainer '{label}'...", quiet=cfg.quiet) as on_line:
         for raw in proc.stdout:
             line = raw.rstrip("\n")
@@ -541,11 +712,20 @@ def cmd_run(
     rebuild: Annotated[
         bool, typer.Option("--rebuild", help="Destroy and recreate the container")
     ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Print the devcontainer commands without executing"),
+    ] = False,
 ) -> None:
     """Run a devcontainer. Uses local .devcontainer/ if present, otherwise uses the named template."""
-    config_path, cfg, cwd = _ensure_container_up(template_name, rebuild=rebuild)
+    config_path, cfg, cwd = _ensure_container_up(
+        template_name, rebuild=rebuild, dry_run=dry_run
+    )
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
     exec_cmd.extend(["--", shell or cfg.shell])
+    if dry_run:
+        con.info("Would exec: " + " ".join(exec_cmd))
+        return
     log.info("devcontainer exec: %s", " ".join(exec_cmd))
     os.execvp("devcontainer", exec_cmd)
 
