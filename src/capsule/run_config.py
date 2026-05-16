@@ -1,7 +1,14 @@
+import logging
 import os
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+# Matches a still-unexpanded shell variable reference ($VAR or ${VAR}).
+_UNEXPANDED_RE = re.compile(r"\$\{?[A-Za-z_]")
 
 
 @dataclass
@@ -21,10 +28,19 @@ class RunConfig:
             return cls()
         with path.open("rb") as f:
             data = tomllib.load(f)
+        env: dict[str, str] = {}
+        for k, v in data.get("env", {}).items():
+            raw = str(v)
+            expanded = os.path.expandvars(raw)
+            if _UNEXPANDED_RE.search(expanded):
+                log.warning(
+                    "Env var '%s': value %r may contain an undefined variable", k, raw
+                )
+            env[k] = expanded
         return cls(
             mounts=list(data.get("volumes", {}).get("mounts", [])),
             dotfiles=list(data.get("dotfiles", {}).get("mounts", [])),
-            env={k: os.path.expandvars(str(v)) for k, v in data.get("env", {}).items()},
+            env=env,
             shell=data.get("run", {}).get("shell", "/bin/bash"),
             quiet=bool(data.get("run", {}).get("quiet", True)),
         )
