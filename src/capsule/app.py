@@ -43,16 +43,11 @@ def _handle_errors():
         yield
     except TemplateNotFound as e:
         hint = "Run `capsule list` to see available templates."
-        msg = str(e)
-        start = msg.find("'")
-        end = msg.find("'", start + 1)
-        if start != -1 and end != -1:
-            queried = msg[start + 1 : end]
-            names = [t["name"] for t in store.list_templates()]
-            matches = difflib.get_close_matches(queried, names, n=1, cutoff=0.6)
-            if matches:
-                hint = f"Did you mean '{matches[0]}'? {hint}"
-        con.error(msg, hint)
+        names = [t["name"] for t in store.list_templates()]
+        matches = difflib.get_close_matches(e.name, names, n=1, cutoff=0.6)
+        if matches:
+            hint = f"Did you mean '{matches[0]}'? {hint}"
+        con.error(str(e), hint)
         raise typer.Exit(1) from e
     except TemplateAlreadyExists as e:
         con.error(str(e))
@@ -627,7 +622,7 @@ def _ensure_container_up(
     elif local.exists():
         try:
             label = json.loads(local.read_text()).get("name", ".devcontainer/")
-        except Exception:
+        except (OSError, json.JSONDecodeError):
             label = ".devcontainer/"
     else:
         entries = store.list_templates()
@@ -670,8 +665,6 @@ def _ensure_container_up(
     proc = subprocess.Popen(
         up_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
-    if proc.stdout is None:
-        raise RuntimeError("Failed to open subprocess stdout pipe")
     with con.launching(f"Starting devcontainer '{label}'...", quiet=cfg.quiet) as on_line:
         for raw in proc.stdout:
             line = raw.rstrip("\n")

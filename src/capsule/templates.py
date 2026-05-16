@@ -4,13 +4,15 @@ import shutil
 import tempfile
 import tomllib
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TypedDict
 
 log = logging.getLogger(__name__)
 
 
 class TemplateNotFound(Exception):
-    pass
+    def __init__(self, name: str) -> None:
+        self.name = name
+        super().__init__(f"Template '{name}' not found")
 
 
 class TemplateAlreadyExists(Exception):
@@ -60,20 +62,23 @@ class TemplateStore:
         p = self._dest(name) / self._PROVENANCE_FILE
         if not p.exists():
             return {}
-        with p.open("rb") as f:
-            return dict(tomllib.load(f))
+        try:
+            with p.open("rb") as f:
+                return dict(tomllib.load(f))
+        except (OSError, tomllib.TOMLDecodeError):
+            log.warning("Could not read %s", p)
+            return {}
 
     def _save_capsule_toml(self, name: str, data: dict) -> None:
         lines: list[str] = []
         for k, v in data.items():
-            if isinstance(v, str):
+            if k != "meta":
                 lines.append(f'{k} = "{v}"')
-        if "meta" in data and isinstance(data["meta"], dict):
+        if meta := data.get("meta"):
             lines.append("")
             lines.append("[meta]")
-            for k, v in data["meta"].items():
-                if isinstance(v, str):
-                    lines.append(f'{k} = "{v}"')
+            for k, v in meta.items():
+                lines.append(f'{k} = "{v}"')
         (self._dest(name) / self._PROVENANCE_FILE).write_text(
             "\n".join(lines) + "\n", encoding="utf-8"
         )
@@ -81,14 +86,7 @@ class TemplateStore:
     def list_templates(self) -> list[TemplateEntry]:
         result: list[TemplateEntry] = []
         for p in self._template_dirs():
-            toml_path = p / self._PROVENANCE_FILE
-            meta: dict = {}
-            if toml_path.exists():
-                try:
-                    with toml_path.open("rb") as f:
-                        meta = tomllib.load(f).get("meta", {})
-                except Exception:
-                    pass
+            meta = self._load_capsule_toml(p.name).get("meta", {})
             result.append(
                 {
                     "name": p.name,
@@ -118,14 +116,14 @@ class TemplateStore:
     def delete(self, name: str) -> None:
         dest = self._dest(name)
         if not dest.exists():
-            raise TemplateNotFound(f"Template '{name}' not found")
+            raise TemplateNotFound(name)
         shutil.rmtree(dest)
         log.info("Deleted template '%s'", name)
 
     def rename(self, old_name: str, new_name: str) -> None:
         src = self._dest(old_name)
         if not src.exists():
-            raise TemplateNotFound(f"Template '{old_name}' not found")
+            raise TemplateNotFound(old_name)
         dst = self._dest(new_name)
         if dst.exists():
             raise TemplateAlreadyExists(f"Template '{new_name}' already exists")
@@ -135,7 +133,7 @@ class TemplateStore:
     def update(self, name: str, source: Path) -> None:
         dest = self._dest(name)
         if not dest.exists():
-            raise TemplateNotFound(f"Template '{name}' not found")
+            raise TemplateNotFound(name)
         if not source.exists() or not source.is_dir():
             raise FileNotFoundError(
                 f"Source path does not exist or is not a directory: {source}"
@@ -158,7 +156,7 @@ class TemplateStore:
     def view(self, name: str) -> tuple[str, Path]:
         dest = self._dest(name)
         if not dest.exists():
-            raise TemplateNotFound(f"Template '{name}' not found")
+            raise TemplateNotFound(name)
         json_path = dest / "devcontainer.json"
         return json_path.read_text(encoding="utf-8"), json_path
 
@@ -184,7 +182,7 @@ class TemplateStore:
     def init(self, name: str, dest: Path, force: bool = False) -> Path:
         src = self._dest(name)
         if not src.exists():
-            raise TemplateNotFound(f"Template '{name}' not found")
+            raise TemplateNotFound(name)
         if dest.exists():
             if not force:
                 raise FileExistsError(f"{dest} already exists")
@@ -204,7 +202,7 @@ class TemplateStore:
     def export(self, name: str, output: Path) -> Path:
         dest = self._dest(name)
         if not dest.exists():
-            raise TemplateNotFound(f"Template '{name}' not found")
+            raise TemplateNotFound(name)
         base = str(output / name)
         shutil.make_archive(base, "zip", root_dir=self._dir, base_dir=name)
         result = Path(base + ".zip")
@@ -229,7 +227,7 @@ class TemplateStore:
     def load_provenance(self, name: str) -> dict[str, str]:
         dest = self._dest(name)
         if not dest.exists():
-            raise TemplateNotFound(f"Template '{name}' not found")
+            raise TemplateNotFound(name)
         p = dest / self._PROVENANCE_FILE
         if not p.exists():
             raise NoProvenance(
@@ -250,7 +248,7 @@ class TemplateStore:
         self, name: str, description: str | None, author: str | None
     ) -> None:
         if not self._dest(name).exists():
-            raise TemplateNotFound(f"Template '{name}' not found")
+            raise TemplateNotFound(name)
         data = self._load_capsule_toml(name)
         meta = dict(data.get("meta", {}))
         if description is not None:
@@ -271,11 +269,11 @@ class TemplateStore:
     def _flatten(obj: object, prefix: str = "") -> list[tuple[str, str]]:
         pairs: list[tuple[str, str]] = []
         if isinstance(obj, dict):
-            for k, v in cast(dict[str, object], obj).items():
+            for k, v in obj.items():
                 key = f"{prefix}.{k}" if prefix else k
                 pairs.extend(TemplateStore._flatten(v, key))
         elif isinstance(obj, list):
-            for i, v in enumerate(cast(list[object], obj)):
+            for i, v in enumerate(obj):
                 pairs.extend(TemplateStore._flatten(v, f"{prefix}[{i}]"))
         else:
             pairs.append((prefix, str(obj)))
