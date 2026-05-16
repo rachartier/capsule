@@ -1,6 +1,6 @@
 [project]
 name = "capsule"
-version = "0.2.5"
+dynamic = ["version"]
 description = "Manage devcontainer templates from the CLI"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -21,8 +21,11 @@ dev = [
 capsule = "capsule.__main__:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/capsule"]
