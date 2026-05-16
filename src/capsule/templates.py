@@ -1,6 +1,7 @@
 import json
 import logging
 import shutil
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import TypedDict, cast
@@ -32,6 +33,8 @@ class TemplateEntry(TypedDict):
     name: str
     path: str
     mtime: float
+    description: str
+    author: str
 
 
 class SearchResult(TypedDict):
@@ -53,15 +56,55 @@ class TemplateStore:
     def _template_dirs(self) -> list[Path]:
         return [p for p in sorted(self._dir.iterdir()) if p.is_dir()]
 
+    def _load_capsule_toml(self, name: str) -> dict:
+        p = self._dest(name) / self._PROVENANCE_FILE
+        if not p.exists():
+            return {}
+        with p.open("rb") as f:
+            return dict(tomllib.load(f))
+
+    def _save_capsule_toml(self, name: str, data: dict) -> None:
+        lines: list[str] = []
+        for k, v in data.items():
+            if isinstance(v, str):
+                lines.append(f'{k} = "{v}"')
+        if "meta" in data and isinstance(data["meta"], dict):
+            lines.append("")
+            lines.append("[meta]")
+            for k, v in data["meta"].items():
+                if isinstance(v, str):
+                    lines.append(f'{k} = "{v}"')
+        (self._dest(name) / self._PROVENANCE_FILE).write_text(
+            "\n".join(lines) + "\n", encoding="utf-8"
+        )
+
     def list_templates(self) -> list[TemplateEntry]:
-        return [
-            {"name": p.name, "path": str(p), "mtime": p.stat().st_mtime}
-            for p in self._template_dirs()
-        ]
+        result: list[TemplateEntry] = []
+        for p in self._template_dirs():
+            toml_path = p / self._PROVENANCE_FILE
+            meta: dict = {}
+            if toml_path.exists():
+                try:
+                    with toml_path.open("rb") as f:
+                        meta = tomllib.load(f).get("meta", {})
+                except Exception:
+                    pass
+            result.append(
+                {
+                    "name": p.name,
+                    "path": str(p),
+                    "mtime": p.stat().st_mtime,
+                    "description": str(meta.get("description", "")),
+                    "author": str(meta.get("author", "")),
+                }
+            )
+        return result
 
     def add(self, source: Path, name: str) -> Path:
         if not source.exists() or not source.is_dir():
-            raise FileNotFoundError(f"Source path does not exist or is not a directory: {source}")
+            raise FileNotFoundError(
+                f"Source path does not exist or is not a directory: {source}"
+            )
         if not (source / "devcontainer.json").exists():
             raise MissingDevcontainer(f"No devcontainer.json found in {source}")
         dest = self._dest(name)
@@ -94,13 +137,22 @@ class TemplateStore:
         if not dest.exists():
             raise TemplateNotFound(f"Template '{name}' not found")
         if not source.exists() or not source.is_dir():
-            raise FileNotFoundError(f"Source path does not exist or is not a directory: {source}")
+            raise FileNotFoundError(
+                f"Source path does not exist or is not a directory: {source}"
+            )
         new_json = source / "devcontainer.json"
         if not new_json.exists():
             raise MissingDevcontainer(f"No devcontainer.json found in {source}")
         self._validate_json(new_json)
-        shutil.rmtree(dest)
-        shutil.copytree(source, dest)
+        # Copy to a temp dir first so the dest is never left in a partial state.
+        tmp = Path(tempfile.mkdtemp(dir=self._dir, prefix=f".{name}."))
+        try:
+            shutil.copytree(source, tmp, dirs_exist_ok=True)
+            shutil.rmtree(dest)
+            tmp.rename(dest)
+        except Exception:
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
         log.info("Updated template '%s' from %s", name, source)
 
     def view(self, name: str) -> tuple[str, Path]:
@@ -119,11 +171,14 @@ class TemplateStore:
                 continue
             try:
                 data: object = json.loads(json_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                log.warning("Skipping template '%s' in search: invalid JSON: %s", p.name, e)
                 continue
             for field, snippet in self._flatten(data):
                 if kw in field.lower() or kw in snippet.lower():
-                    results.append({"template": p.name, "field": field, "snippet": snippet[:80]})
+                    results.append(
+                        {"template": p.name, "field": field, "snippet": snippet[:80]}
+                    )
         return results
 
     def init(self, name: str, dest: Path, force: bool = False) -> Path:
@@ -133,8 +188,16 @@ class TemplateStore:
         if dest.exists():
             if not force:
                 raise FileExistsError(f"{dest} already exists")
-            shutil.rmtree(dest)
-        shutil.copytree(src, dest)
+            tmp = dest.parent / f".{dest.name}.tmp"
+            try:
+                shutil.copytree(src, tmp)
+                shutil.rmtree(dest)
+                tmp.rename(dest)
+            except Exception:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
+        else:
+            shutil.copytree(src, dest)
         log.info("Initialized template '%s' at %s", name, dest)
         return dest
 
@@ -148,13 +211,20 @@ class TemplateStore:
         log.info("Exported template '%s' to %s", name, result)
         return result
 
-    def save_provenance(self, name: str, url: str, ref: str | None, subpath: str | None) -> None:
-        lines = [f'url = "{url}"']
+    def save_provenance(
+        self, name: str, url: str, ref: str | None, subpath: str | None
+    ) -> None:
+        data = self._load_capsule_toml(name)
+        data["url"] = url
         if ref:
-            lines.append(f'ref = "{ref}"')
+            data["ref"] = ref
+        elif "ref" in data:
+            del data["ref"]
         if subpath:
-            lines.append(f'subpath = "{subpath}"')
-        (self._dest(name) / self._PROVENANCE_FILE).write_text("\n".join(lines) + "\n", encoding="utf-8")
+            data["subpath"] = subpath
+        elif "subpath" in data:
+            del data["subpath"]
+        self._save_capsule_toml(name, data)
 
     def load_provenance(self, name: str) -> dict[str, str]:
         dest = self._dest(name)
@@ -162,9 +232,34 @@ class TemplateStore:
             raise TemplateNotFound(f"Template '{name}' not found")
         p = dest / self._PROVENANCE_FILE
         if not p.exists():
-            raise NoProvenance(f"Template '{name}' has no recorded source (was added from a local path)")
-        with p.open("rb") as f:
-            return tomllib.load(f)  # type: ignore[return-value]
+            raise NoProvenance(
+                f"Template '{name}' has no recorded source (was added from a local path)"
+            )
+        data = self._load_capsule_toml(name)
+        if "url" not in data:
+            raise NoProvenance(
+                f"Template '{name}' has no recorded source (was added from a local path)"
+            )
+        return {k: str(v) for k, v in data.items() if k != "meta"}
+
+    def load_meta(self, name: str) -> dict[str, str]:
+        data = self._load_capsule_toml(name)
+        return {k: str(v) for k, v in data.get("meta", {}).items()}
+
+    def save_meta(
+        self, name: str, description: str | None, author: str | None
+    ) -> None:
+        if not self._dest(name).exists():
+            raise TemplateNotFound(f"Template '{name}' not found")
+        data = self._load_capsule_toml(name)
+        meta = dict(data.get("meta", {}))
+        if description is not None:
+            meta["description"] = description
+        if author is not None:
+            meta["author"] = author
+        if meta:
+            data["meta"] = meta
+        self._save_capsule_toml(name, data)
 
     def _validate_json(self, path: Path) -> None:
         try:
