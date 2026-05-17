@@ -21,7 +21,7 @@ wheels = [
 
 [[package]]
 name = "capsule"
-version = "0.2.6.dev5+g7ae686bef.d20260516"
+version = "0.2.9.dev0+g2f1838593.d20260517"
 source = { editable = "." }
 dependencies = [
     { name = "rich" },
