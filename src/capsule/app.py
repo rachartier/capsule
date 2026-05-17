@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tomllib
 from datetime import datetime
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Annotated
 
@@ -35,6 +36,18 @@ from capsule.templates import (
 app = typer.Typer(no_args_is_help=True)
 log = logging.getLogger(__name__)
 store = TemplateStore(TEMPLATES_DIR)
+
+
+@app.callback(invoke_without_command=True)
+def _app_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "-v", "--version", is_eager=True, help="Print version and exit."),
+):
+    if version:
+        print(pkg_version("capsule"))
+        raise typer.Exit()
+    if ctx.invoked_subcommand is None:
+        print(ctx.get_help())
 
 
 @contextlib.contextmanager

@@ -33,6 +33,24 @@ capsule run           # local .devcontainer/ takes precedence
 
 ## Installation
 
+### Pre-built binary (recommended)
+
+Linux and macOS (auto-detects OS and architecture, installs to `~/.local/bin`):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/rachartier/capsule/main/install.sh | bash
+```
+
+Or download manually from the [releases page](https://github.com/rachartier/capsule/releases).
+
+Then install the devcontainer CLI:
+
+```sh
+npm install -g @devcontainers/cli
+```
+
+### From source
+
 ```sh
 uv tool install --editable /path/to/capsule
 npm install -g @devcontainers/cli
