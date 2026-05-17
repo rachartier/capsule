@@ -1,6 +1,5 @@
-
 <p align="center">
-    <img width="220" height="220" aligh="center" alt="image" src="https://github.com/user-attachments/assets/f50dadd4-66f2-4402-9ee5-57f2b86d1521" />
+    <img width="220" height="220" aligh="center" alt="image" src="https://github.com/user-attachments/assets/6033bc0a-5cb0-4e9b-92a6-5e2bfdecfd38" />
 </p>
 
 
@@ -8,7 +7,7 @@
 
 A CLI to manage [devcontainer](https://containers.dev) templates from one place. Add a template once, run it in any project with a single command.
 <p align="center">
-    <img width="840" alt="capsule_demo(1)" src="https://github.com/user-attachments/assets/197cf0f0-5b48-400e-bc9e-1d5ba838531c" />
+    <img width="840" alt="capsule_demo(1)" src="https://github.com/user-attachments/assets/d23ae0a3-2dc6-4cb0-b0b6-d511f437c849" />
 </p>
 
 ```sh
