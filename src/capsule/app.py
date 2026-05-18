@@ -457,7 +457,7 @@ def cmd_config_init(
 # MY_VAR = "value"
 
 [run]
-# shell = "/bin/bash"
+# shell = "/bin/bash"  # global shell override; per-template: set customizations.capsule.shell in devcontainer.json
 quiet = false
 """,
         encoding="utf-8",
@@ -719,6 +719,19 @@ def _build_exec_cmd(config_path: str | None, cfg: RunConfig, cwd: str) -> list[s
     return exec_cmd
 
 
+def _read_devcontainer_shell(config_path: str | None, cwd: str) -> str | None:
+    """Return customizations.capsule.shell from the active devcontainer.json, or None."""
+    if config_path:
+        json_path = Path(config_path)
+    else:
+        json_path = Path(cwd) / ".devcontainer" / "devcontainer.json"
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        return data.get("customizations", {}).get("capsule", {}).get("shell")
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return None
+
+
 @app.command("run")
 def cmd_run(
     template_name: Annotated[
@@ -743,9 +756,8 @@ def cmd_run(
         template_name, rebuild=rebuild, dry_run=dry_run
     )
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
-    resolved_shell = shell or cfg.shell
-    if resolved_shell:
-        exec_cmd.extend(["--", resolved_shell])
+    resolved_shell = shell or cfg.shell or _read_devcontainer_shell(config_path, cwd) or "/bin/sh"
+    exec_cmd.extend(["--", resolved_shell])
     if dry_run:
         con.info("Would exec: " + " ".join(exec_cmd))
         return
