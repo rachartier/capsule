@@ -42,7 +42,7 @@ class RunConfig:
             dotfiles=list(data.get("dotfiles", {}).get("mounts", [])),
             env=env,
             shell=data.get("run", {}).get("shell", None),
-            quiet=bool(data.get("run", {}).get("quiet", True)),
+            quiet=bool(data.get("run", {}).get("quiet", False)),
         )
 
     @staticmethod

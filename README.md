@@ -145,7 +145,7 @@ mounts = []
 shell = "/bin/bash"
 # Suppress devcontainer output while starting (spinner shown instead).
 # Output is always printed on failure regardless of this setting.
-quiet = true
+quiet = false
 ```
 
 ### `[dotfiles]`
@@ -199,13 +199,13 @@ Default: none
 ```toml
 [run]
 shell = "/bin/bash"
-quiet = true
+quiet = false
 ```
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `shell` | string | `/bin/bash` | Shell launched inside the container by `capsule run`. |
-| `quiet` | bool | `true` | Suppress `devcontainer up` output while starting. A spinner is shown instead. If the command fails, the captured output is printed so the error is always visible. Set to `false` to stream output directly. |
+| `quiet` | bool | `false` | Suppress `devcontainer up` output while starting. A spinner is shown instead. If the command fails, the captured output is printed so the error is always visible.
 
 ## Command reference
 

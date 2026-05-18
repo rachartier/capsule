@@ -5,14 +5,15 @@ import logging
 import os
 import shutil
 import subprocess
+import threading
 import tomllib
 from datetime import datetime
-from capsule import __version__
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from capsule import __version__
 from capsule import console as con
 from capsule.config import CONFIG_FILE, TEMPLATES_DIR
 from capsule.run_config import RunConfig
@@ -41,7 +42,9 @@ store = TemplateStore(TEMPLATES_DIR)
 @app.callback(invoke_without_command=True)
 def _app_callback(
     ctx: typer.Context,
-    version: bool = typer.Option(False, "-v", "--version", is_eager=True, help="Print version and exit."),
+    version: bool = typer.Option(
+        False, "-v", "--version", is_eager=True, help="Print version and exit."
+    ),
 ):
     if version:
         print(__version__)
@@ -384,7 +387,9 @@ def cmd_meta(
             if not meta:
                 con.info(f"No metadata set for '{template_name}'.")
             else:
-                con.print_table(["Key", "Value"], [[k, v] for k, v in sorted(meta.items())])
+                con.print_table(
+                    ["Key", "Value"], [[k, v] for k, v in sorted(meta.items())]
+                )
         else:
             store.save_meta(template_name, description, author)
             con.success(f"Metadata updated for '{template_name}'.")
@@ -410,7 +415,10 @@ def cmd_config(ctx: typer.Context) -> None:
         con.info(f"No config file found at {CONFIG_FILE}. Using defaults.")
         return
     cfg = RunConfig.load(CONFIG_FILE)
-    rows: list[list[str]] = [["config file", str(CONFIG_FILE)], ["shell", cfg.shell or "(devcontainer default)"]]
+    rows: list[list[str]] = [
+        ["config file", str(CONFIG_FILE)],
+        ["shell", cfg.shell or "(devcontainer default)"],
+    ]
     for mount in cfg.dotfiles:
         rows.append(["dotfile", RunConfig.expand_mount(mount)])
     for mount in cfg.mounts:
@@ -450,7 +458,7 @@ def cmd_config_init(
 
 [run]
 # shell = "/bin/bash"
-quiet = true
+quiet = false
 """,
         encoding="utf-8",
     )
@@ -678,12 +686,20 @@ def _ensure_container_up(
     proc = subprocess.Popen(
         up_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
-    with con.launching(f"Starting devcontainer '{label}'...", quiet=cfg.quiet) as on_line:
-        for raw in proc.stdout:
-            line = raw.rstrip("\n")
-            lines.append(line)
-            on_line(line)
+    with con.launching(
+        f"Starting devcontainer '{label}'...", quiet=cfg.quiet
+    ) as on_line:
+
+        def _drain() -> None:
+            for raw in proc.stdout:
+                line = raw.rstrip("\n")
+                lines.append(line)
+                on_line(line)
+
+        reader = threading.Thread(target=_drain, daemon=True)
+        reader.start()
         proc.wait()
+        reader.join(timeout=2.0)
     if proc.returncode != 0:
         if cfg.quiet:
             con.subprocess_output("\n".join(lines))
@@ -717,7 +733,9 @@ def cmd_run(
     ] = False,
     dry_run: Annotated[
         bool,
-        typer.Option("--dry-run", help="Print the devcontainer commands without executing"),
+        typer.Option(
+            "--dry-run", help="Print the devcontainer commands without executing"
+        ),
     ] = False,
 ) -> None:
     """Run a devcontainer. Uses local .devcontainer/ if present, otherwise uses the named template."""
