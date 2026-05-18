@@ -12,7 +12,7 @@ def _write(path: Path, content: str) -> None:
 
 def test_load_defaults_when_no_file(tmp_path: Path) -> None:
     cfg = RunConfig.load(tmp_path / "nonexistent.toml")
-    assert cfg.shell == "/bin/bash"
+    assert cfg.shell is None
     assert cfg.mounts == []
     assert cfg.dotfiles == []
     assert cfg.env == {}

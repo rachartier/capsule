@@ -410,7 +410,7 @@ def cmd_config(ctx: typer.Context) -> None:
         con.info(f"No config file found at {CONFIG_FILE}. Using defaults.")
         return
     cfg = RunConfig.load(CONFIG_FILE)
-    rows: list[list[str]] = [["config file", str(CONFIG_FILE)], ["shell", cfg.shell]]
+    rows: list[list[str]] = [["config file", str(CONFIG_FILE)], ["shell", cfg.shell or "(devcontainer default)"]]
     for mount in cfg.dotfiles:
         rows.append(["dotfile", RunConfig.expand_mount(mount)])
     for mount in cfg.mounts:
@@ -449,7 +449,7 @@ def cmd_config_init(
 # MY_VAR = "value"
 
 [run]
-shell = "/bin/bash"
+# shell = "/bin/bash"
 quiet = true
 """,
         encoding="utf-8",
@@ -725,7 +725,9 @@ def cmd_run(
         template_name, rebuild=rebuild, dry_run=dry_run
     )
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
-    exec_cmd.extend(["--", shell or cfg.shell])
+    resolved_shell = shell or cfg.shell
+    if resolved_shell:
+        exec_cmd.extend(["--", resolved_shell])
     if dry_run:
         con.info("Would exec: " + " ".join(exec_cmd))
         return

@@ -16,7 +16,7 @@ class RunConfig:
     mounts: list[str] = field(default_factory=list)
     dotfiles: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
-    shell: str = "/bin/bash"
+    shell: str | None = None
     quiet: bool = True
 
     def all_mounts(self) -> list[str]:
@@ -41,7 +41,7 @@ class RunConfig:
             mounts=list(data.get("volumes", {}).get("mounts", [])),
             dotfiles=list(data.get("dotfiles", {}).get("mounts", [])),
             env=env,
-            shell=data.get("run", {}).get("shell", "/bin/bash"),
+            shell=data.get("run", {}).get("shell", None),
             quiet=bool(data.get("run", {}).get("quiet", True)),
         )
 
