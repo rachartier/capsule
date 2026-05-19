@@ -729,7 +729,6 @@ def _build_exec_cmd(config_path: str | None, cfg: RunConfig, cwd: str) -> list[s
 
 
 def _devcontainer_mount_paths(config_path: str | None, cwd: str) -> set[str]:
-    """Return all source and target paths declared in the active devcontainer.json mounts."""
     json_path = Path(config_path) if config_path else Path(cwd) / ".devcontainer" / "devcontainer.json"
     try:
         data = json.loads(json_path.read_text(encoding="utf-8"))

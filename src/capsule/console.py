@@ -61,18 +61,15 @@ def spinner(label: str):
 
 @contextlib.contextmanager
 def launching(label: str, quiet: bool):
+    if quiet:
+        yield lambda _: None
+        return
     _spinner = Spinner("dots", text=f" {label}", style="cyan")
-    live = (
-        contextlib.nullcontext()
-        if quiet
-        else Live(_spinner, auto_refresh=True, console=_console, transient=True, refresh_per_second=12.5)
-    )
-    with live:
+    with Live(_spinner, auto_refresh=True, console=_console, transient=True, refresh_per_second=12.5):
         def _on_line(line: str) -> None:
-            if not quiet:
-                clean = _clean(line)
-                if clean:
-                    _console.print(f"  [dim]{escape(clean)}[/]")
+            clean = _clean(line)
+            if clean:
+                _console.print(f"  [dim]{escape(clean)}[/]")
         yield _on_line
 
 
