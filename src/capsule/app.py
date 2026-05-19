@@ -675,7 +675,13 @@ def _ensure_container_up(
     if config_path:
         up_cmd.extend(["--config", config_path])
         up_cmd.extend(["--id-label", f"capsule.workspace={cwd_str}"])
+    existing_paths = _devcontainer_mount_paths(config_path, cwd_str)
     for mount in cfg.all_mounts():
+        expanded = RunConfig.expand_mount(mount)
+        parts = expanded.split(":")
+        if parts[0] in existing_paths or parts[1] in existing_paths:
+            log.debug("Skipping mount %r: already declared in devcontainer.json", mount)
+            continue
         up_cmd.extend(["--mount", RunConfig.mount_to_devcontainer_format(mount)])
     for k, v in cfg.env.items():
         up_cmd.extend(["--remote-env", f"{k}={v}"])
@@ -720,6 +726,28 @@ def _build_exec_cmd(config_path: str | None, cfg: RunConfig, cwd: str) -> list[s
     for k, v in cfg.env.items():
         exec_cmd.extend(["--remote-env", f"{k}={v}"])
     return exec_cmd
+
+
+def _devcontainer_mount_paths(config_path: str | None, cwd: str) -> set[str]:
+    """Return all source and target paths declared in the active devcontainer.json mounts."""
+    json_path = Path(config_path) if config_path else Path(cwd) / ".devcontainer" / "devcontainer.json"
+    try:
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        mounts = data.get("mounts", [])
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return set()
+    paths: set[str] = set()
+    for m in mounts:
+        if isinstance(m, str):
+            for part in m.split(","):
+                k, _, v = part.partition("=")
+                if k.strip() in ("source", "target") and v:
+                    paths.add(v.strip())
+        elif isinstance(m, dict):
+            for key in ("source", "target"):
+                if m.get(key):
+                    paths.add(m[key])
+    return paths
 
 
 def _read_devcontainer_shell(config_path: str | None, cwd: str) -> str | None:
