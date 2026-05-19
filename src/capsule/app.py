@@ -624,6 +624,7 @@ def _ensure_container_up(
     template_name: str | None,
     rebuild: bool = False,
     dry_run: bool = False,
+    quiet: bool = False,
 ) -> tuple[str | None, RunConfig, str]:
     if shutil.which("devcontainer") is None:
         con.error(
@@ -664,6 +665,8 @@ def _ensure_container_up(
         label = picked
 
     cfg = RunConfig.load(CONFIG_FILE)
+    if quiet:
+        cfg.quiet = True
     cwd_str = str(Path.cwd())
 
     up_cmd = ["devcontainer", "up", "--workspace-folder", cwd_str]
@@ -774,6 +777,9 @@ def cmd_exec(
     rebuild: Annotated[
         bool, typer.Option("--rebuild", help="Destroy and recreate the container")
     ] = False,
+    quiet: Annotated[
+        bool, typer.Option("--quiet", "-q", help="Suppress devcontainer startup output")
+    ] = False,
 ) -> None:
     """Run a one-shot command inside the devcontainer.
 
@@ -800,7 +806,7 @@ def cmd_exec(
         con.error("No command given.", "Usage: capsule exec [<template>] <command...>")
         raise typer.Exit(1)
 
-    config_path, cfg, cwd = _ensure_container_up(template_name, rebuild=rebuild)
+    config_path, cfg, cwd = _ensure_container_up(template_name, rebuild=rebuild, quiet=quiet)
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
     exec_cmd.extend(["--", *command])
     log.info("devcontainer exec: %s", " ".join(exec_cmd))
