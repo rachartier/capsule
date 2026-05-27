@@ -72,8 +72,13 @@ class TemplateStore:
     def _save_capsule_toml(self, name: str, data: dict) -> None:
         lines: list[str] = []
         for k, v in data.items():
-            if k != "meta":
+            if k not in ("meta", "run"):
                 lines.append(f'{k} = "{v}"')
+        if run := data.get("run"):
+            lines.append("")
+            lines.append("[run]")
+            for k, v in run.items():
+                lines.append(f"{k} = {v}")
         if meta := data.get("meta"):
             lines.append("")
             lines.append("[meta]")
@@ -257,6 +262,39 @@ class TemplateStore:
             meta["author"] = author
         if meta:
             data["meta"] = meta
+        self._save_capsule_toml(name, data)
+
+    def load_run_override(self, name: str) -> dict[str, int]:
+        data = self._load_capsule_toml(name)
+        run = data.get("run", {})
+        result: dict[str, int] = {}
+        for key in ("uid", "gid"):
+            if key in run:
+                try:
+                    result[key] = int(run[key])
+                except (TypeError, ValueError):
+                    log.warning("Template '%s': invalid %s in capsule.toml, ignoring", name, key)
+        return result
+
+    def save_run_override(
+        self, name: str, uid: int | None, gid: int | None
+    ) -> None:
+        if not self._dest(name).exists():
+            raise TemplateNotFound(name)
+        data = self._load_capsule_toml(name)
+        run = dict(data.get("run", {}))
+        if uid is not None:
+            run["uid"] = uid
+        else:
+            run.pop("uid", None)
+        if gid is not None:
+            run["gid"] = gid
+        else:
+            run.pop("gid", None)
+        if run:
+            data["run"] = run
+        elif "run" in data:
+            del data["run"]
         self._save_capsule_toml(name, data)
 
     def _validate_json(self, path: Path) -> None:

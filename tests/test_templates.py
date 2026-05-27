@@ -265,3 +265,59 @@ def test_meta_in_list_templates(store: TemplateStore, tmp_path: Path) -> None:
 def test_save_meta_not_found(store: TemplateStore) -> None:
     with pytest.raises(TemplateNotFound):
         store.save_meta("nonexistent", description="x", author=None)
+
+
+# -- run override (uid/gid) --
+
+def test_load_run_override_empty(store: TemplateStore, tmp_path: Path) -> None:
+    store.add(_make_template(tmp_path, "python"), "python")
+    assert store.load_run_override("python") == {}
+
+
+def test_save_and_load_run_override(store: TemplateStore, tmp_path: Path) -> None:
+    store.add(_make_template(tmp_path, "python"), "python")
+    store.save_run_override("python", uid=1000, gid=1000)
+    result = store.load_run_override("python")
+    assert result["uid"] == 1000
+    assert result["gid"] == 1000
+
+
+def test_save_run_override_partial(store: TemplateStore, tmp_path: Path) -> None:
+    store.add(_make_template(tmp_path, "python"), "python")
+    store.save_run_override("python", uid=42, gid=None)
+    result = store.load_run_override("python")
+    assert result["uid"] == 42
+    assert "gid" not in result
+
+
+def test_save_run_override_unset(store: TemplateStore, tmp_path: Path) -> None:
+    store.add(_make_template(tmp_path, "python"), "python")
+    store.save_run_override("python", uid=1000, gid=1000)
+    store.save_run_override("python", uid=None, gid=None)
+    assert store.load_run_override("python") == {}
+
+
+def test_run_override_preserved_when_meta_resaved(
+    store: TemplateStore, tmp_path: Path
+) -> None:
+    store.add(_make_template(tmp_path, "python"), "python")
+    store.save_run_override("python", uid=999, gid=999)
+    store.save_meta("python", description="desc", author=None)
+    assert store.load_run_override("python")["uid"] == 999
+
+
+def test_meta_preserved_when_run_override_resaved(
+    store: TemplateStore, tmp_path: Path
+) -> None:
+    store.add(_make_template(tmp_path, "python"), "python")
+    store.save_meta("python", description="desc", author="Alice")
+    store.save_run_override("python", uid=100, gid=200)
+    meta = store.load_meta("python")
+    assert meta["description"] == "desc"
+    assert meta["author"] == "Alice"
+
+
+def test_save_run_override_not_found(store: TemplateStore) -> None:
+    with pytest.raises(TemplateNotFound):
+        store.save_run_override("nonexistent", uid=1, gid=1)
+

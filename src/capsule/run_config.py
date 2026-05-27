@@ -11,6 +11,15 @@ log = logging.getLogger(__name__)
 _UNEXPANDED_RE = re.compile(r"\$\{?[A-Za-z_]")
 
 
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass
 class RunConfig:
     mounts: list[str] = field(default_factory=list)
@@ -18,6 +27,14 @@ class RunConfig:
     env: dict[str, str] = field(default_factory=dict)
     shell: str | None = None
     quiet: bool = True
+    uid: int | None = None
+    gid: int | None = None
+
+    def resolved_uid(self) -> int:
+        return self.uid if self.uid is not None else os.getuid()
+
+    def resolved_gid(self) -> int:
+        return self.gid if self.gid is not None else os.getgid()
 
     def all_mounts(self) -> list[str]:
         return self.mounts + self.dotfiles
@@ -43,6 +60,8 @@ class RunConfig:
             env=env,
             shell=data.get("run", {}).get("shell", None),
             quiet=bool(data.get("run", {}).get("quiet", False)),
+            uid=_optional_int(data.get("run", {}).get("uid")),
+            gid=_optional_int(data.get("run", {}).get("gid")),
         )
 
     @staticmethod

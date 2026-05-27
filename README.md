@@ -28,6 +28,7 @@ capsule run           # local .devcontainer/ takes precedence
 - [Quick start](#quick-start)
 - [How `capsule run` works](#how-capsule-run-works)
 - [Configuration](#configuration)
+  - [User ID mapping](#user-id-mapping)
 - [Command reference](#command-reference)
 - [Troubleshooting](#troubleshooting)
 
@@ -146,6 +147,8 @@ shell = "/bin/bash"
 # Suppress devcontainer output while starting (spinner shown instead).
 # Output is always printed on failure regardless of this setting.
 quiet = false
+# uid = 1000  # passed as UID env var; defaults to host uid
+# gid = 1000  # passed as GID env var; defaults to host gid
 ```
 
 ### `[dotfiles]`
@@ -206,6 +209,30 @@ quiet = false
 | --- | --- | --- | --- |
 | `shell` | string | `/bin/bash` | Shell launched inside the container by `capsule run`. |
 | `quiet` | bool | `false` | Suppress `devcontainer up` output while starting. A spinner is shown instead. If the command fails, the captured output is printed so the error is always visible.
+| `uid` | integer | host UID | Passed as `UID` env var. Defaults to `os.getuid()`. |
+| `gid` | integer | host GID | Passed as `GID` env var. Defaults to `os.getgid()`. |
+
+### User ID mapping
+
+Capsule passes `UID` and `GID` as `--remote-env` to every container, defaulting to the host user's IDs so bind-mounted files have correct ownership.
+
+**Global override** (applies to all runs):
+
+```toml
+[run]
+uid = 1000
+gid = 1000
+```
+
+**Per-template override** (stored in the template's `capsule.toml`):
+
+```sh
+capsule meta python --uid 1000 --gid 1000   # set
+capsule meta python                          # view
+capsule meta python --uid -1 --gid -1        # unset; reverts to global / host
+```
+
+Per-template values take precedence over `config.toml`. The image's `postCreateCommand` is responsible for consuming these vars.
 
 ## Command reference
 
@@ -217,7 +244,7 @@ quiet = false
 | `capsule add <source> [--name <n>] [--ref <ref>] [--subpath <dir>]` | Store a template from a local directory, `gh:owner/repo[/subpath]`, or any git URL. `--ref` overrides branch/tag, `--subpath` selects a subdirectory. |
 | `capsule view <template>` | Pretty-print a template's `devcontainer.json`. |
 | `capsule edit <template>` | Open a template's `devcontainer.json` in `$EDITOR`. |
-| `capsule meta <template> [--description <d>] [--author <a>]` | View or set metadata (description, author) for a template. |
+| `capsule meta <template> [--description <d>] [--author <a>] [--uid <n>] [--gid <n>]` | View or set metadata (description, author, uid, gid) for a template. Pass `-1` to `--uid`/`--gid` to unset a per-template override. |
 | `capsule search <keyword>` | Case-insensitive search across all templates' `devcontainer.json`. |
 | `capsule update <path> [--name <n>]` | Replace the `devcontainer.json` in a stored template from a folder. |
 | `capsule rename <old> <new>` | Rename a stored template. |

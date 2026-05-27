@@ -379,19 +379,35 @@ def cmd_meta(
         str | None,
         typer.Option("--author", "-a", help="Set the template author"),
     ] = None,
+    uid: Annotated[
+        int | None,
+        typer.Option("--uid", help="Override UID for this template (pass -1 to unset)"),
+    ] = None,
+    gid: Annotated[
+        int | None,
+        typer.Option("--gid", help="Override GID for this template (pass -1 to unset)"),
+    ] = None,
 ) -> None:
-    """View or set metadata (description, author) for a stored template."""
+    """View or set metadata (description, author, uid, gid) for a stored template."""
+    uid_val = None if uid is None else (None if uid < 0 else uid)
+    gid_val = None if gid is None else (None if gid < 0 else gid)
     with _handle_errors():
-        if description is None and author is None:
+        if description is None and author is None and uid is None and gid is None:
             meta = store.load_meta(template_name)
-            if not meta:
+            run_override = store.load_run_override(template_name)
+            rows: list[list[str]] = [[k, v] for k, v in sorted(meta.items())]
+            for key in ("uid", "gid"):
+                if key in run_override:
+                    rows.append([key, str(run_override[key])])
+            if not rows:
                 con.info(f"No metadata set for '{template_name}'.")
             else:
-                con.print_table(
-                    ["Key", "Value"], [[k, v] for k, v in sorted(meta.items())]
-                )
+                con.print_table(["Key", "Value"], rows)
         else:
-            store.save_meta(template_name, description, author)
+            if description is not None or author is not None:
+                store.save_meta(template_name, description, author)
+            if uid is not None or gid is not None:
+                store.save_run_override(template_name, uid_val, gid_val)
             con.success(f"Metadata updated for '{template_name}'.")
 
 
@@ -418,6 +434,8 @@ def cmd_config(ctx: typer.Context) -> None:
     rows: list[list[str]] = [
         ["config file", str(CONFIG_FILE)],
         ["shell", cfg.shell or "(devcontainer default)"],
+        ["uid", str(cfg.resolved_uid())],
+        ["gid", str(cfg.resolved_gid())],
     ]
     for mount in cfg.dotfiles:
         rows.append(["dotfile", RunConfig.expand_mount(mount)])
@@ -459,6 +477,8 @@ def cmd_config_init(
 [run]
 # shell = "/bin/bash"  # global shell override; per-template: set customizations.capsule.shell in devcontainer.json
 quiet = false
+# uid = 1000  # passed as UID env var; defaults to host uid
+# gid = 1000  # passed as GID env var; defaults to host gid
 """,
         encoding="utf-8",
     )
@@ -667,6 +687,14 @@ def _ensure_container_up(
     cfg = RunConfig.load(CONFIG_FILE)
     if quiet:
         cfg.quiet = True
+
+    if template_name:
+        run_override = store.load_run_override(template_name)
+        if "uid" in run_override:
+            cfg.uid = run_override["uid"]
+        if "gid" in run_override:
+            cfg.gid = run_override["gid"]
+
     cwd_str = str(Path.cwd())
 
     up_cmd = ["devcontainer", "up", "--workspace-folder", cwd_str]
@@ -685,6 +713,8 @@ def _ensure_container_up(
         up_cmd.extend(["--mount", RunConfig.mount_to_devcontainer_format(mount)])
     for k, v in cfg.env.items():
         up_cmd.extend(["--remote-env", f"{k}={v}"])
+    up_cmd.extend(["--remote-env", f"UID={cfg.resolved_uid()}"])
+    up_cmd.extend(["--remote-env", f"GID={cfg.resolved_gid()}"])
 
     if dry_run:
         con.info("Would run: " + " ".join(up_cmd))
@@ -725,11 +755,17 @@ def _build_exec_cmd(config_path: str | None, cfg: RunConfig, cwd: str) -> list[s
         exec_cmd.extend(["--id-label", f"capsule.workspace={cwd}"])
     for k, v in cfg.env.items():
         exec_cmd.extend(["--remote-env", f"{k}={v}"])
+    exec_cmd.extend(["--remote-env", f"UID={cfg.resolved_uid()}"])
+    exec_cmd.extend(["--remote-env", f"GID={cfg.resolved_gid()}"])
     return exec_cmd
 
 
 def _devcontainer_mount_paths(config_path: str | None, cwd: str) -> set[str]:
-    json_path = Path(config_path) if config_path else Path(cwd) / ".devcontainer" / "devcontainer.json"
+    json_path = (
+        Path(config_path)
+        if config_path
+        else Path(cwd) / ".devcontainer" / "devcontainer.json"
+    )
     try:
         data = json.loads(json_path.read_text(encoding="utf-8"))
         mounts = data.get("mounts", [])
@@ -786,7 +822,9 @@ def cmd_run(
         template_name, rebuild=rebuild, dry_run=dry_run
     )
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
-    resolved_shell = shell or cfg.shell or _read_devcontainer_shell(config_path, cwd) or "/bin/sh"
+    resolved_shell = (
+        shell or cfg.shell or _read_devcontainer_shell(config_path, cwd) or "/bin/sh"
+    )
     exec_cmd.extend(["--", resolved_shell])
     if dry_run:
         con.info("Would exec: " + " ".join(exec_cmd))
@@ -833,7 +871,9 @@ def cmd_exec(
         con.error("No command given.", "Usage: capsule exec [<template>] <command...>")
         raise typer.Exit(1)
 
-    config_path, cfg, cwd = _ensure_container_up(template_name, rebuild=rebuild, quiet=quiet)
+    config_path, cfg, cwd = _ensure_container_up(
+        template_name, rebuild=rebuild, quiet=quiet
+    )
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
     exec_cmd.extend(["--", *command])
     log.info("devcontainer exec: %s", " ".join(exec_cmd))

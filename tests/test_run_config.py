@@ -88,3 +88,32 @@ def test_all_mounts_combines(tmp_path: Path) -> None:
 def test_mount_to_devcontainer_format() -> None:
     result = RunConfig.mount_to_devcontainer_format("/host:/container")
     assert result == "type=bind,source=/host,target=/container"
+
+
+def test_uid_gid_defaults_to_host(tmp_path: Path) -> None:
+    import os
+    cfg = RunConfig.load(tmp_path / "nonexistent.toml")
+    assert cfg.uid is None
+    assert cfg.gid is None
+    assert cfg.resolved_uid() == os.getuid()
+    assert cfg.resolved_gid() == os.getgid()
+
+
+def test_uid_gid_explicit_values(tmp_path: Path) -> None:
+    p = tmp_path / "config.toml"
+    _write(p, "[run]\nuid = 1234\ngid = 5678\n")
+    cfg = RunConfig.load(p)
+    assert cfg.uid == 1234
+    assert cfg.gid == 5678
+    assert cfg.resolved_uid() == 1234
+    assert cfg.resolved_gid() == 5678
+
+
+def test_uid_gid_partial(tmp_path: Path) -> None:
+    import os
+    p = tmp_path / "config.toml"
+    _write(p, "[run]\nuid = 42\n")
+    cfg = RunConfig.load(p)
+    assert cfg.uid == 42
+    assert cfg.gid is None
+    assert cfg.resolved_gid() == os.getgid()
