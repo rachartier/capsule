@@ -1,4 +1,6 @@
+from importlib.metadata import PackageNotFoundError, version
+
 try:
-    from capsule._version import __version__
-except ImportError:
+    __version__ = version("capsule")
+except PackageNotFoundError:
     __version__ = "unknown"
