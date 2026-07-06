@@ -4,7 +4,6 @@ import shutil
 import tempfile
 import tomllib
 from pathlib import Path
-from typing import TypedDict
 
 log = logging.getLogger(__name__)
 
@@ -29,20 +28,6 @@ class MissingDevcontainer(Exception):
 
 class NoProvenance(Exception):
     pass
-
-
-class TemplateEntry(TypedDict):
-    name: str
-    path: str
-    mtime: float
-    description: str
-    author: str
-
-
-class SearchResult(TypedDict):
-    template: str
-    field: str
-    snippet: str
 
 
 class TemplateStore:
@@ -88,8 +73,8 @@ class TemplateStore:
             "\n".join(lines) + "\n", encoding="utf-8"
         )
 
-    def list_templates(self) -> list[TemplateEntry]:
-        result: list[TemplateEntry] = []
+    def list_templates(self) -> list[dict]:
+        result: list[dict] = []
         for p in self._template_dirs():
             meta = self._load_capsule_toml(p.name).get("meta", {})
             result.append(
@@ -165,9 +150,9 @@ class TemplateStore:
         json_path = dest / "devcontainer.json"
         return json_path.read_text(encoding="utf-8"), json_path
 
-    def search(self, keyword: str) -> list[SearchResult]:
+    def search(self, keyword: str) -> list[dict[str, str]]:
         kw = keyword.lower()
-        results: list[SearchResult] = []
+        results: list[dict[str, str]] = []
         for p in self._template_dirs():
             json_path = p / "devcontainer.json"
             if not json_path.exists():
@@ -175,7 +160,9 @@ class TemplateStore:
             try:
                 data: object = json.loads(json_path.read_text(encoding="utf-8"))
             except json.JSONDecodeError as e:
-                log.warning("Skipping template '%s' in search: invalid JSON: %s", p.name, e)
+                log.warning(
+                    "Skipping template '%s' in search: invalid JSON: %s", p.name, e
+                )
                 continue
             for field, snippet in self._flatten(data):
                 if kw in field.lower() or kw in snippet.lower():
@@ -249,9 +236,7 @@ class TemplateStore:
         data = self._load_capsule_toml(name)
         return {k: str(v) for k, v in data.get("meta", {}).items()}
 
-    def save_meta(
-        self, name: str, description: str | None, author: str | None
-    ) -> None:
+    def save_meta(self, name: str, description: str | None, author: str | None) -> None:
         if not self._dest(name).exists():
             raise TemplateNotFound(name)
         data = self._load_capsule_toml(name)
@@ -273,12 +258,12 @@ class TemplateStore:
                 try:
                     result[key] = int(run[key])
                 except (TypeError, ValueError):
-                    log.warning("Template '%s': invalid %s in capsule.toml, ignoring", name, key)
+                    log.warning(
+                        "Template '%s': invalid %s in capsule.toml, ignoring", name, key
+                    )
         return result
 
-    def save_run_override(
-        self, name: str, uid: int | None, gid: int | None
-    ) -> None:
+    def save_run_override(self, name: str, uid: int | None, gid: int | None) -> None:
         if not self._dest(name).exists():
             raise TemplateNotFound(name)
         data = self._load_capsule_toml(name)

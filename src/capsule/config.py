@@ -2,8 +2,9 @@ import logging
 import os
 from pathlib import Path
 
-_xdg = os.environ.get("XDG_CONFIG_HOME")
-CONFIG_DIR = Path(_xdg) / "capsule" if _xdg else Path.home() / ".config" / "capsule"
+CONFIG_DIR = (
+    Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "capsule"
+)
 
 TEMPLATES_DIR = CONFIG_DIR / "templates"
 LOG_FILE = CONFIG_DIR / "capsule.log"

@@ -5,7 +5,6 @@ import logging
 import os
 import shutil
 import subprocess
-import threading
 import tomllib
 from datetime import datetime
 from pathlib import Path
@@ -65,16 +64,12 @@ def _handle_errors():
             hint = f"Did you mean '{matches[0]}'? {hint}"
         con.error(str(e), hint)
         raise typer.Exit(1) from e
-    except TemplateAlreadyExists as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
     except FileExistsError as e:
         con.error(str(e), "Use --force to overwrite.")
         raise typer.Exit(1) from e
-    except NoProvenance as e:
-        con.error(str(e))
-        raise typer.Exit(1) from e
     except (
+        TemplateAlreadyExists,
+        NoProvenance,
         MissingDevcontainer,
         InvalidJSON,
         FileNotFoundError,
@@ -553,9 +548,6 @@ def cmd_stop(
             "--force", "-f", help="Force-remove the container (stop + delete)"
         ),
     ] = False,
-    remove: Annotated[
-        bool, typer.Option("--rm", help="Remove the container after stopping")
-    ] = False,
 ) -> None:
     """Stop the devcontainer for the current directory (or given workspace path)."""
     cli = _find_container_cli()
@@ -575,16 +567,11 @@ def cmd_stop(
         if force:
             subprocess.run([cli, "rm", "-f", cid], check=False)
             con.success(f"Removed container {name}.")
+        elif not c.get("Status", "").startswith("Up"):
+            con.info(f"Container {name} is already stopped.")
         else:
-            status = c.get("Status", "")
-            if not status.startswith("Up"):
-                con.info(f"Container {name} is already stopped.")
-            else:
-                subprocess.run([cli, "stop", cid], check=False)
-                con.success(f"Stopped container {name}.")
-            if remove:
-                subprocess.run([cli, "rm", cid], check=False)
-                con.success(f"Removed container {name}.")
+            subprocess.run([cli, "stop", cid], check=False)
+            con.success(f"Stopped container {name}.")
 
 
 @app.command("doctor")
@@ -728,17 +715,11 @@ def _ensure_container_up(
     with con.launching(
         f"Starting devcontainer '{label}'...", quiet=cfg.quiet
     ) as on_line:
-
-        def _drain() -> None:
-            for raw in proc.stdout:
-                line = raw.rstrip("\n")
-                lines.append(line)
-                on_line(line)
-
-        reader = threading.Thread(target=_drain, daemon=True)
-        reader.start()
+        for raw in proc.stdout:
+            line = raw.rstrip("\n")
+            lines.append(line)
+            on_line(line)
         proc.wait()
-        reader.join(timeout=2.0)
     if proc.returncode != 0:
         if cfg.quiet:
             con.subprocess_output("\n".join(lines))
