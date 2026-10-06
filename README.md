@@ -99,6 +99,7 @@ If a `.devcontainer/devcontainer.json` exists in the current directory, it is us
 ```sh
 capsule run python                   # use stored template
 capsule run                          # use local .devcontainer/
+capsule run --recreate               # destroy and recreate the container so devcontainer.json edits (devices, mounts, runArgs...) apply
 capsule run --rebuild                # destroy and recreate the container after edits
 ```
 
@@ -257,8 +258,8 @@ Per-template values take precedence over `config.toml`. The image's `postCreateC
 | Command | What it does |
 | --- | --- |
 | `capsule init <template> [--output <dir>] [--force]` | Copy a template into the current project as `.devcontainer/`. |
-| `capsule run [<template>] [--shell <sh>] [--rebuild] [--dry-run]` | Start the devcontainer and open a shell. `--dry-run` prints the commands without executing. |
-| `capsule exec [<template>] <command...> [--rebuild]` | Run a one-shot command in the devcontainer. Uses local `.devcontainer/` if present, otherwise the first positional is the template name. |
+| `capsule run [<template>] [--shell <sh>] [--rebuild] [--recreate] [--dry-run]` | Start the devcontainer and open a shell. `--dry-run` prints the commands without executing. |
+| `capsule exec [<template>] <command...> [--rebuild] [--recreate]` | Run a one-shot command in the devcontainer. Uses local `.devcontainer/` if present, otherwise the first positional is the template name. |
 | `capsule ps` | List all capsule devcontainers (running and stopped). |
 | `capsule stop [<workspace>] [--force] [--rm]` | Stop the devcontainer for the current directory or given workspace path. `--force` skips confirmation, `--rm` removes the container. |
 

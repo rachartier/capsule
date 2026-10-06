@@ -630,6 +630,7 @@ def cmd_doctor() -> None:
 def _ensure_container_up(
     template_name: str | None,
     rebuild: bool = False,
+    recreate: bool = False,
     dry_run: bool = False,
     quiet: bool = False,
 ) -> tuple[str | None, RunConfig, str]:
@@ -685,7 +686,7 @@ def _ensure_container_up(
     cwd_str = str(Path.cwd())
 
     up_cmd = ["devcontainer", "up", "--workspace-folder", cwd_str]
-    if rebuild:
+    if rebuild or recreate:
         up_cmd.append("--remove-existing-container")
     if config_path:
         up_cmd.extend(["--config", config_path])
@@ -791,6 +792,13 @@ def cmd_run(
     rebuild: Annotated[
         bool, typer.Option("--rebuild", help="Destroy and recreate the container")
     ] = False,
+    recreate: Annotated[
+        bool,
+        typer.Option(
+            "--recreate",
+            help="Destroy and recreate the container from the current devcontainer.json",
+        ),
+    ] = False,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -800,7 +808,7 @@ def cmd_run(
 ) -> None:
     """Run a devcontainer. Uses local .devcontainer/ if present, otherwise uses the named template."""
     config_path, cfg, cwd = _ensure_container_up(
-        template_name, rebuild=rebuild, dry_run=dry_run
+        template_name, rebuild=rebuild, recreate=recreate, dry_run=dry_run
     )
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
     resolved_shell = (
@@ -822,6 +830,13 @@ def cmd_exec(
     ctx: typer.Context,
     rebuild: Annotated[
         bool, typer.Option("--rebuild", help="Destroy and recreate the container")
+    ] = False,
+    recreate: Annotated[
+        bool,
+        typer.Option(
+            "--recreate",
+            help="Destroy and recreate the container from the current devcontainer.json",
+        ),
     ] = False,
     quiet: Annotated[
         bool, typer.Option("--quiet", "-q", help="Suppress devcontainer startup output")
@@ -853,7 +868,7 @@ def cmd_exec(
         raise typer.Exit(1)
 
     config_path, cfg, cwd = _ensure_container_up(
-        template_name, rebuild=rebuild, quiet=quiet
+        template_name, rebuild=rebuild, recreate=recreate, quiet=quiet
     )
     exec_cmd = _build_exec_cmd(config_path, cfg, cwd)
     exec_cmd.extend(["--", *command])
