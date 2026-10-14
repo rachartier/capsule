@@ -19,7 +19,7 @@ Need project-specific tweaks? Fork the template into the project in one step:
 
 ```sh
 capsule init python   # copy "python" into ./.devcontainer/
-capsule run           # local .devcontainer/ takes precedence
+capsule run           # no name: uses the local .devcontainer/
 ```
 
 ## Contents
@@ -94,7 +94,7 @@ Authentication uses your existing git setup (SSH keys, credential helpers, netrc
 
 ## How `capsule run` works
 
-If a `.devcontainer/devcontainer.json` exists in the current directory, it is used. Otherwise the named template is used directly from the store, with no copy step.
+A template name always selects the stored template, used directly with no copy step, even when `.devcontainer/` exists. Without a name, `.devcontainer/devcontainer.json` in the current directory is used; if there is none, capsule asks you to pick a template.
 
 ```sh
 capsule run python                   # use stored template
@@ -265,9 +265,9 @@ Per-template values take precedence over `config.toml`. The image's `postCreateC
 | --- | --- |
 | `capsule init <template> [--output <dir>] [--force]` | Copy a template into the current project as `.devcontainer/`. |
 | `capsule run [<template>] [--shell <sh>] [--rebuild] [--recreate] [--dry-run]` | Start the devcontainer and open a shell. `--dry-run` prints the commands without executing. |
-| `capsule exec [<template>] <command...> [--rebuild] [--recreate]` | Run a one-shot command in the devcontainer. Uses local `.devcontainer/` if present, otherwise the first positional is the template name. |
+| `capsule exec [--quiet] [--rebuild] [--recreate] [<template>] -- <command...>` | Run a one-shot command in the devcontainer. Uses local `.devcontainer/` if present, otherwise the first positional is the template name. Put `--` before the command so its flags are not read as capsule's. |
 | `capsule ps` | List all capsule devcontainers (running and stopped). |
-| `capsule stop [<workspace>] [--force] [--rm]` | Stop the devcontainer for the current directory or given workspace path. `--force` skips confirmation, `--rm` removes the container. |
+| `capsule stop [<workspace>] [--force]` | Stop the devcontainer for the current directory or given workspace path. `--force` removes the container. |
 
 ### Configuration and diagnostics
 

@@ -817,7 +817,7 @@ def cmd_run(
         ),
     ] = False,
 ) -> None:
-    """Run a devcontainer. Uses local .devcontainer/ if present, otherwise uses the named template."""
+    """Run a devcontainer. Uses the named template, else the local .devcontainer/."""
     config_path, cfg, cwd = _ensure_container_up(
         template_name, rebuild=rebuild, recreate=recreate, dry_run=dry_run
     )
