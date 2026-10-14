@@ -185,3 +185,20 @@ def test_ps_without_container_cli_reports_error(
     result = CliRunner().invoke(app_module.app, ["ps"])
     assert result.exit_code == 1
     assert "docker or podman not found" in result.output
+
+
+@pytest.mark.parametrize(
+    ("flag", "no_cache"), [("--recreate", False), ("--rebuild", True)]
+)
+def test_run_recreate_and_rebuild_flags(
+    flag: str, no_cache: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_devcontainer(tmp_path / ".devcontainer" / "devcontainer.json", {})
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(app_module, "CONFIG_FILE", tmp_path / "config.toml")
+    monkeypatch.setattr(app_module.shutil, "which", lambda cmd: f"/usr/bin/{cmd}")
+    result = CliRunner().invoke(app_module.app, ["run", flag, "--dry-run"])
+    assert result.exit_code == 0
+    output = result.output.replace("\n", " ")
+    assert "--remove-existing-container" in output
+    assert ("--build-no-cache" in output) is no_cache

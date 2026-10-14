@@ -100,7 +100,7 @@ A template name always selects the stored template, used directly with no copy s
 capsule run python                   # use stored template
 capsule run                          # use local .devcontainer/
 capsule run --recreate               # destroy and recreate the container so devcontainer.json edits (devices, mounts, runArgs...) apply
-capsule run --rebuild                # destroy and recreate the container after edits
+capsule run --rebuild                # same, and rebuild the image from its Dockerfile without the build cache
 ```
 
 Under the hood Capsule calls `devcontainer up` to start the container and run its lifecycle hooks, then `devcontainer exec` to drop you into an interactive shell. Mounts and env from `config.toml` are passed through as flags. Subsequent runs reuse the existing container.

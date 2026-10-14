@@ -693,6 +693,8 @@ def _ensure_container_up(
     up_cmd = ["devcontainer", "up", "--workspace-folder", cwd_str]
     if rebuild or recreate:
         up_cmd.append("--remove-existing-container")
+    if rebuild:
+        up_cmd.append("--build-no-cache")
     if config_path:
         up_cmd.extend(["--config", config_path])
         up_cmd.extend(["--id-label", f"capsule.workspace={cwd_str}"])
@@ -794,7 +796,11 @@ def cmd_run(
         str | None, typer.Option("--shell", "-s", help="Shell override")
     ] = None,
     rebuild: Annotated[
-        bool, typer.Option("--rebuild", help="Destroy and recreate the container")
+        bool,
+        typer.Option(
+            "--rebuild",
+            help="Like --recreate, and rebuild the image without the build cache",
+        ),
     ] = False,
     recreate: Annotated[
         bool,
@@ -833,7 +839,11 @@ def cmd_run(
 def cmd_exec(
     ctx: typer.Context,
     rebuild: Annotated[
-        bool, typer.Option("--rebuild", help="Destroy and recreate the container")
+        bool,
+        typer.Option(
+            "--rebuild",
+            help="Like --recreate, and rebuild the image without the build cache",
+        ),
     ] = False,
     recreate: Annotated[
         bool,
