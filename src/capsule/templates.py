@@ -136,6 +136,10 @@ class TemplateStore:
         tmp = Path(tempfile.mkdtemp(dir=self._dir, prefix=f".{name}."))
         try:
             shutil.copytree(source, tmp, dirs_exist_ok=True)
+            # capsule.toml holds store-side state (meta, provenance, uid/gid).
+            state = dest / self._PROVENANCE_FILE
+            if state.exists():
+                shutil.copy2(state, tmp / self._PROVENANCE_FILE)
             shutil.rmtree(dest)
             tmp.rename(dest)
         except Exception:

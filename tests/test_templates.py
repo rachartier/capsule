@@ -104,6 +104,15 @@ def test_update_replaces_content(store: TemplateStore, tmp_path: Path) -> None:
     assert json.loads(raw)["name"] == "new"
 
 
+def test_update_keeps_capsule_toml(store: TemplateStore, tmp_path: Path) -> None:
+    store.add(_make_template(tmp_path / "orig", "python"), "python")
+    store.save_meta("python", "Python dev", None)
+    store.save_run_override("python", uid=1000, gid=None)
+    store.update("python", _make_template(tmp_path / "new", "python"))
+    assert store.load_meta("python") == {"description": "Python dev"}
+    assert store.load_run_override("python") == {"uid": 1000}
+
+
 def test_update_not_found(store: TemplateStore, tmp_path: Path) -> None:
     src = _make_template(tmp_path, "python")
     with pytest.raises(TemplateNotFound):
