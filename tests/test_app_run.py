@@ -1,7 +1,16 @@
 import json
+import subprocess
 from pathlib import Path
 
-from capsule.app import _devcontainer_mount_paths, _read_devcontainer_shell
+import pytest
+
+import capsule.app as app_module
+from capsule.app import (
+    _container_workspace,
+    _devcontainer_mount_paths,
+    _list_devcontainers,
+    _read_devcontainer_shell,
+)
 
 
 def _write_devcontainer(path: Path, data: dict) -> None:
@@ -143,3 +152,26 @@ class TestBuildExecCmd:
         cmd = _build_exec_cmd(None, cfg, "/workspace")
         assert "UID=1234" in " ".join(cmd)
         assert "GID=5678" in " ".join(cmd)
+
+
+class TestListDevcontainers:
+    def test_finds_local_and_template_containers(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        local = {"ID": "a", "Labels": "devcontainer.local_folder=/proj/a"}
+        template = {"ID": "b", "Labels": "capsule.workspace=/proj/b,x=y"}
+        by_label = {
+            "label=devcontainer.local_folder": [local],
+            "label=capsule.workspace": [template],
+        }
+
+        def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess:
+            out = "\n".join(json.dumps(c) for c in by_label[cmd[-1]])
+            return subprocess.CompletedProcess(cmd, 0, stdout=out)
+
+        monkeypatch.setattr(app_module.subprocess, "run", fake_run)
+        containers = _list_devcontainers("docker")
+        assert sorted(_container_workspace(c) for c in containers) == [
+            "/proj/a",
+            "/proj/b",
+        ]

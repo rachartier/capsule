@@ -488,32 +488,41 @@ def _find_container_cli() -> str | None:
     return None
 
 
+# Local .devcontainer/ runs get devcontainer.local_folder; template runs get
+# only the capsule.workspace id label.
+_WORKSPACE_LABELS = ("devcontainer.local_folder", "capsule.workspace")
+
+
 def _list_devcontainers(cli: str) -> list[dict]:
-    cmd = [
-        cli,
-        "ps",
-        "--all",
-        "--format",
-        "{{json .}}",
-        "--filter",
-        "label=devcontainer.local_folder",
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    containers = []
-    for raw in result.stdout.splitlines():
-        stripped = raw.strip()
-        if stripped:
-            try:
-                containers.append(json.loads(stripped))
-            except json.JSONDecodeError:
-                log.warning("Could not parse container list output: %r", stripped)
-    return containers
+    containers: dict[str, dict] = {}
+    for label in _WORKSPACE_LABELS:
+        cmd = [
+            cli,
+            "ps",
+            "--all",
+            "--format",
+            "{{json .}}",
+            "--filter",
+            f"label={label}",
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        for raw in result.stdout.splitlines():
+            stripped = raw.strip()
+            if stripped:
+                try:
+                    c = json.loads(stripped)
+                except json.JSONDecodeError:
+                    log.warning("Could not parse container list output: %r", stripped)
+                    continue
+                containers[c.get("ID") or c.get("Id", "")] = c
+    return list(containers.values())
 
 
 def _container_workspace(c: dict) -> str:
     for part in c.get("Labels", "").split(","):
-        if part.startswith("devcontainer.local_folder="):
-            return part.split("=", 1)[1]
+        key, _, value = part.partition("=")
+        if key in _WORKSPACE_LABELS:
+            return value
     return ""
 
 
