@@ -120,3 +120,9 @@ def test_messages_print_brackets_literally(capsys: pytest.CaptureFixture[str]) -
     out = capsys.readouterr().out
     assert "[@ref][/subpath]" in out
     assert "[/hint]" in out
+
+
+def test_add_invalid_shorthand_reports_error() -> None:
+    result = CliRunner().invoke(app, ["add", "gh:foo"])
+    assert result.exit_code == 1
+    assert "Invalid gh: shorthand" in result.output

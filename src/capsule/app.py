@@ -127,7 +127,8 @@ def cmd_add(
     ] = None,
 ) -> None:
     """Add a new template from a local folder or a git remote."""
-    parsed = parse_source(source)
+    with _handle_errors():
+        parsed = parse_source(source)
     if isinstance(parsed, GitSource):
         parsed = GitSource(
             parsed.url,
