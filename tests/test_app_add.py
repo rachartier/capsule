@@ -2,8 +2,10 @@ import json
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
-from capsule.app import _add_all_templates
+from capsule import console as con
+from capsule.app import _add_all_templates, app
 from capsule.templates import TemplateStore
 
 
@@ -105,3 +107,16 @@ def test_add_all_ignores_dirs_without_devcontainer(tmp_path, store):
 
     assert not had_errors
     assert not (store._dir / "not-a-template").exists()
+
+
+def test_add_help_shows_source_format() -> None:
+    result = CliRunner().invoke(app, ["add", "--help"])
+    assert result.exit_code == 0
+    assert "gh:owner/repo[@ref][/subpath]" in result.output
+
+
+def test_messages_print_brackets_literally(capsys: pytest.CaptureFixture[str]) -> None:
+    con.error("Expected 'gh:owner/repo[@ref][/subpath]'.", "[/hint]")
+    out = capsys.readouterr().out
+    assert "[@ref][/subpath]" in out
+    assert "[/hint]" in out

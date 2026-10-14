@@ -106,7 +106,7 @@ def cmd_add(
     source: Annotated[
         str,
         typer.Argument(
-            help="Local path, gh:owner/repo[@ref][/subpath], or a git remote URL"
+            help="Local path, gh:owner/repo\\[@ref]\\[/subpath], or a git remote URL"
         ),
     ],
     name: Annotated[

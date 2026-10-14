@@ -26,17 +26,17 @@ def _clean(line: str) -> str:
 
 def error(msg: str, hint: str | None = None) -> None:
     log.error(msg)
-    _console.print(f"[bold red]![/] {msg}")
+    _console.print(f"[bold red]![/] {escape(msg)}")
     if hint:
-        _console.print(f"  [dim]{hint}[/]")
+        _console.print(f"  [dim]{escape(hint)}[/]")
 
 
 def success(msg: str) -> None:
-    _console.print(f"[bold green]✓[/] {msg}")
+    _console.print(f"[bold green]✓[/] {escape(msg)}")
 
 
 def info(msg: str) -> None:
-    _console.print(f"[cyan]*[/] {msg}")
+    _console.print(f"[cyan]*[/] {escape(msg)}")
 
 
 def confirm(msg: str) -> bool:
