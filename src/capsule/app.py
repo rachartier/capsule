@@ -5,7 +5,6 @@ import logging
 import os
 import shutil
 import subprocess
-import tomllib
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -15,7 +14,7 @@ import typer
 from capsule import __version__
 from capsule import console as con
 from capsule.config import CONFIG_FILE, TEMPLATES_DIR
-from capsule.run_config import RunConfig
+from capsule.run_config import InvalidConfig, RunConfig
 from capsule.sources import (
     GitSource,
     GitSubpathNotFound,
@@ -68,6 +67,7 @@ def _handle_errors():
         con.error(str(e), "Use --force to overwrite.")
         raise typer.Exit(1) from e
     except (
+        InvalidConfig,
         TemplateAlreadyExists,
         NoProvenance,
         MissingDevcontainer,
@@ -425,7 +425,8 @@ def cmd_config(ctx: typer.Context) -> None:
     if not CONFIG_FILE.exists():
         con.info(f"No config file found at {CONFIG_FILE}. Using defaults.")
         return
-    cfg = RunConfig.load(CONFIG_FILE)
+    with _handle_errors():
+        cfg = RunConfig.load(CONFIG_FILE)
     rows: list[list[str]] = [
         ["config file", str(CONFIG_FILE)],
         ["shell", cfg.shell or "(devcontainer default)"],
@@ -614,8 +615,7 @@ def cmd_doctor() -> None:
 
     if CONFIG_FILE.exists():
         try:
-            with CONFIG_FILE.open("rb") as f:
-                tomllib.load(f)
+            RunConfig.load(CONFIG_FILE)
             con.success("config.toml is valid.")
         except Exception as e:
             con.error(f"config.toml is invalid: {e}")
@@ -672,7 +672,8 @@ def _ensure_container_up(
             config_path = str(json_path)
         label = picked
 
-    cfg = RunConfig.load(CONFIG_FILE)
+    with _handle_errors():
+        cfg = RunConfig.load(CONFIG_FILE)
     if quiet:
         cfg.quiet = True
 

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from capsule.run_config import RunConfig
+from capsule.run_config import InvalidConfig, RunConfig
 
 
 def _write(path: Path, content: str) -> None:
@@ -41,6 +41,14 @@ def test_load_dotfiles(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
     _write(p, '[dotfiles]\nmounts = ["~/.zshrc:/home/user/.zshrc"]\n')
     assert RunConfig.load(p).dotfiles == ["~/.zshrc:/home/user/.zshrc"]
+
+
+@pytest.mark.parametrize("section", ["volumes", "dotfiles"])
+def test_load_rejects_mount_options(tmp_path: Path, section: str) -> None:
+    p = tmp_path / "config.toml"
+    _write(p, f'[{section}]\nmounts = ["~/.ssh:/root/.ssh:ro"]\n')
+    with pytest.raises(InvalidConfig, match="read-only"):
+        RunConfig.load(p)
 
 
 def test_load_env(tmp_path: Path) -> None:

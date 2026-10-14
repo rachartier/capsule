@@ -11,6 +11,22 @@ log = logging.getLogger(__name__)
 _UNEXPANDED_RE = re.compile(r"\$\{?[A-Za-z_]")
 
 
+class InvalidConfig(Exception):
+    """A config.toml that capsule cannot apply."""
+
+
+def _validate_mounts(mounts: list[str]) -> list[str]:
+    for mount in mounts:
+        # devcontainer --mount accepts no options, so ":ro" would be silently dropped.
+        if len(mount.split(":")) != 2:
+            raise InvalidConfig(
+                f"Invalid mount {mount!r}: expected 'host_path:container_path'. "
+                "Options such as ':ro' are not supported; declare read-only mounts "
+                "in devcontainer.json instead."
+            )
+    return mounts
+
+
 def _optional_int(value: object) -> int | None:
     if value is None:
         return None
@@ -55,8 +71,8 @@ class RunConfig:
                 )
             env[k] = expanded
         return cls(
-            mounts=list(data.get("volumes", {}).get("mounts", [])),
-            dotfiles=list(data.get("dotfiles", {}).get("mounts", [])),
+            mounts=_validate_mounts(list(data.get("volumes", {}).get("mounts", []))),
+            dotfiles=_validate_mounts(list(data.get("dotfiles", {}).get("mounts", []))),
             env=env,
             shell=data.get("run", {}).get("shell", None),
             quiet=bool(data.get("run", {}).get("quiet", False)),

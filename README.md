@@ -122,18 +122,18 @@ Templates are stored in `~/.config/capsule/templates/`. Logs go to `~/.config/ca
 ```toml
 [dotfiles]
 # Personal config files mounted into every container.
-# Format: "host_path:container_path[:options]"
+# Format: "host_path:container_path"
 # ~ and $VAR in host_path are expanded at runtime.
 # Microsoft devcontainer images use /home/vscode; root-based images use /root.
 mounts = [
-    # "~/.bashrc:/root/.bashrc:ro",
-    # "~/.gitconfig:/root/.gitconfig:ro",
-    # "~/.ssh:/root/.ssh:ro",
+    # "~/.bashrc:/root/.bashrc",
+    # "~/.gitconfig:/root/.gitconfig",
+    # "~/.ssh:/root/.ssh",
 ]
 
 [volumes]
 # Additional bind mounts applied to every container.
-# Format: "host_path:container_path[:options]"
+# Format: "host_path:container_path"
 mounts = []
 
 [env]
@@ -159,13 +159,13 @@ Mounts applied to every container for personal config files. Kept separate from 
 ```toml
 [dotfiles]
 mounts = [
-    "~/.bashrc:/root/.bashrc:ro",
-    "~/.gitconfig:/root/.gitconfig:ro",
-    "~/.ssh:/root/.ssh:ro",
+    "~/.bashrc:/root/.bashrc",
+    "~/.gitconfig:/root/.gitconfig",
+    "~/.ssh:/root/.ssh",
 ]
 ```
 
-Format: `"host_path:container_path[:options]"`. The container path must match the container user's home directory. Microsoft devcontainer images use `/home/vscode`; root-based images use `/root`.
+Format: `"host_path:container_path"`. The container path must match the container user's home directory. Microsoft devcontainer images use `/home/vscode`; root-based images use `/root`.
 
 Default: `[]`
 
@@ -176,11 +176,17 @@ Additional bind mounts applied to every container, separate from dotfiles.
 ```toml
 [volumes]
 mounts = [
-    "/data:/data:ro",
+    "/data:/data",
 ]
 ```
 
 Same format as `[dotfiles]`. Both lists are merged and passed to `devcontainer up` as bind mounts.
+
+Mounts from `config.toml` are always writable: `devcontainer up --mount` accepts no options, so capsule rejects entries such as `"~/.ssh:/root/.ssh:ro"`. Declare read-only mounts in the template's `devcontainer.json` instead:
+
+```json
+"mounts": ["source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,readonly"]
+```
 
 Default: `[]`
 
