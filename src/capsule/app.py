@@ -434,8 +434,6 @@ def cmd_config(ctx: typer.Context) -> None:
         ["uid", str(cfg.resolved_uid())],
         ["gid", str(cfg.resolved_gid())],
     ]
-    for mount in cfg.dotfiles:
-        rows.append(["dotfile", RunConfig.expand_mount(mount)])
     for mount in cfg.mounts:
         rows.append(["volume", RunConfig.expand_mount(mount)])
     for k, v in cfg.env.items():
@@ -464,9 +462,6 @@ def cmd_config_init(
 
 [volumes]
 # mounts = ["~/my-dir:/home/user/my-dir"]
-
-[dotfiles]
-# mounts = ["~/.zshrc:/home/user/.zshrc"]
 
 [env]
 # MY_VAR = "value"
@@ -703,7 +698,7 @@ def _ensure_container_up(
         up_cmd.extend(["--config", config_path])
         up_cmd.extend(["--id-label", f"capsule.workspace={cwd_str}"])
     existing_paths = _devcontainer_mount_paths(config_path, cwd_str)
-    for mount in cfg.all_mounts():
+    for mount in cfg.mounts:
         expanded = RunConfig.expand_mount(mount)
         parts = expanded.split(":")
         if parts[0] in existing_paths or parts[1] in existing_paths:

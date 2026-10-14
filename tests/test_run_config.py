@@ -14,7 +14,6 @@ def test_load_defaults_when_no_file(tmp_path: Path) -> None:
     cfg = RunConfig.load(tmp_path / "nonexistent.toml")
     assert cfg.shell is None
     assert cfg.mounts == []
-    assert cfg.dotfiles == []
     assert cfg.env == {}
     assert cfg.quiet is True
 
@@ -37,16 +36,30 @@ def test_load_mounts(tmp_path: Path) -> None:
     assert RunConfig.load(p).mounts == ["/a:/b", "/c:/d"]
 
 
-def test_load_dotfiles(tmp_path: Path) -> None:
+def test_load_merges_deprecated_dotfiles(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     p = tmp_path / "config.toml"
-    _write(p, '[dotfiles]\nmounts = ["~/.zshrc:/home/user/.zshrc"]\n')
-    assert RunConfig.load(p).dotfiles == ["~/.zshrc:/home/user/.zshrc"]
+    _write(p, '[volumes]\nmounts = ["/a:/b"]\n[dotfiles]\nmounts = ["/c:/d"]\n')
+    with caplog.at_level(logging.WARNING, logger="capsule.run_config"):
+        cfg = RunConfig.load(p)
+    assert cfg.mounts == ["/a:/b", "/c:/d"]
+    assert any("deprecated" in r.message for r in caplog.records)
 
 
-@pytest.mark.parametrize("section", ["volumes", "dotfiles"])
-def test_load_rejects_mount_options(tmp_path: Path, section: str) -> None:
+def test_load_empty_dotfiles_does_not_warn(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     p = tmp_path / "config.toml"
-    _write(p, f'[{section}]\nmounts = ["~/.ssh:/root/.ssh:ro"]\n')
+    _write(p, "[dotfiles]\nmounts = []\n")
+    with caplog.at_level(logging.WARNING, logger="capsule.run_config"):
+        RunConfig.load(p)
+    assert not caplog.records
+
+
+def test_load_rejects_mount_options(tmp_path: Path) -> None:
+    p = tmp_path / "config.toml"
+    _write(p, '[volumes]\nmounts = ["~/.ssh:/root/.ssh:ro"]\n')
     with pytest.raises(InvalidConfig, match="read-only"):
         RunConfig.load(p)
 
@@ -84,13 +97,6 @@ def test_expand_mount_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOTFILES", "/home/user/dotfiles")
     result = RunConfig.expand_mount("$DOTFILES:/dotfiles")
     assert result.startswith("/home/user/dotfiles")
-
-
-def test_all_mounts_combines(tmp_path: Path) -> None:
-    p = tmp_path / "config.toml"
-    _write(p, '[volumes]\nmounts = ["/a:/b"]\n[dotfiles]\nmounts = ["/c:/d"]\n')
-    cfg = RunConfig.load(p)
-    assert cfg.all_mounts() == ["/a:/b", "/c:/d"]
 
 
 def test_mount_to_devcontainer_format() -> None:

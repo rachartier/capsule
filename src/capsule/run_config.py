@@ -39,7 +39,6 @@ def _optional_int(value: object) -> int | None:
 @dataclass
 class RunConfig:
     mounts: list[str] = field(default_factory=list)
-    dotfiles: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     shell: str | None = None
     quiet: bool = True
@@ -51,9 +50,6 @@ class RunConfig:
 
     def resolved_gid(self) -> int:
         return self.gid if self.gid is not None else os.getgid()
-
-    def all_mounts(self) -> list[str]:
-        return self.mounts + self.dotfiles
 
     @classmethod
     def load(cls, path: Path) -> "RunConfig":
@@ -70,9 +66,12 @@ class RunConfig:
                     "Env var '%s': value %r may contain an undefined variable", k, raw
                 )
             env[k] = expanded
+        mounts = list(data.get("volumes", {}).get("mounts", []))
+        if dotfiles := data.get("dotfiles", {}).get("mounts"):
+            log.warning("[dotfiles] is deprecated: move its mounts to [volumes].")
+            mounts += dotfiles
         return cls(
-            mounts=_validate_mounts(list(data.get("volumes", {}).get("mounts", []))),
-            dotfiles=_validate_mounts(list(data.get("dotfiles", {}).get("mounts", []))),
+            mounts=_validate_mounts(mounts),
             env=env,
             shell=data.get("run", {}).get("shell", None),
             quiet=bool(data.get("run", {}).get("quiet", False)),

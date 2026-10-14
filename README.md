@@ -120,21 +120,15 @@ The file is optional; all settings have defaults.
 Templates are stored in `~/.config/capsule/templates/`. Logs go to `~/.config/capsule/capsule.log`.
 
 ```toml
-[dotfiles]
-# Personal config files mounted into every container.
+[volumes]
+# Bind mounts applied to every container.
 # Format: "host_path:container_path"
 # ~ and $VAR in host_path are expanded at runtime.
 # Microsoft devcontainer images use /home/vscode; root-based images use /root.
 mounts = [
-    # "~/.bashrc:/root/.bashrc",
     # "~/.gitconfig:/root/.gitconfig",
-    # "~/.ssh:/root/.ssh",
+    # "/data:/data",
 ]
-
-[volumes]
-# Additional bind mounts applied to every container.
-# Format: "host_path:container_path"
-mounts = []
 
 [env]
 # Environment variables injected into every container.
@@ -152,35 +146,24 @@ quiet = false
 # gid = 1000  # passed as GID env var; defaults to host gid
 ```
 
-### `[dotfiles]`
-
-Mounts applied to every container for personal config files. Kept separate from `[volumes]` so they are not confused with project data.
-
-```toml
-[dotfiles]
-mounts = [
-    "~/.bashrc:/root/.bashrc",
-    "~/.gitconfig:/root/.gitconfig",
-    "~/.ssh:/root/.ssh",
-]
-```
-
-Format: `"host_path:container_path"`. The container path must match the container user's home directory. Microsoft devcontainer images use `/home/vscode`; root-based images use `/root`.
-
-Default: `[]`
-
 ### `[volumes]`
 
-Additional bind mounts applied to every container, separate from dotfiles.
+Bind mounts applied to every container, for personal config files and data alike.
 
 ```toml
 [volumes]
 mounts = [
+    "~/.bashrc:/root/.bashrc",
+    "~/.gitconfig:/root/.gitconfig",
     "/data:/data",
 ]
 ```
 
-Same format as `[dotfiles]`. Both lists are merged and passed to `devcontainer up` as bind mounts.
+Format: `"host_path:container_path"`. For dotfiles, the container path must match the container user's home directory. Microsoft devcontainer images use `/home/vscode`; root-based images use `/root`. Mounts are passed to `devcontainer up` as bind mounts.
+
+The old `[dotfiles]` section is deprecated: its mounts are still added to `[volumes]`, with a warning.
+
+Default: `[]`
 
 Mounts from `config.toml` are always writable: `devcontainer up --mount` accepts no options, so capsule rejects entries such as `"~/.ssh:/root/.ssh:ro"`. Declare read-only mounts in the template's `devcontainer.json` instead:
 
