@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
 
 import capsule.app as app_module
 from capsule.app import (
@@ -175,3 +176,12 @@ class TestListDevcontainers:
             "/proj/a",
             "/proj/b",
         ]
+
+
+def test_ps_without_container_cli_reports_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(app_module.shutil, "which", lambda _: None)
+    result = CliRunner().invoke(app_module.app, ["ps"])
+    assert result.exit_code == 1
+    assert "docker or podman not found" in result.output

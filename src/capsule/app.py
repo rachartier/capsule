@@ -385,8 +385,8 @@ def cmd_meta(
     ] = None,
 ) -> None:
     """View or set metadata (description, author, uid, gid) for a stored template."""
-    uid_val = None if uid is None else (None if uid < 0 else uid)
-    gid_val = None if gid is None else (None if gid < 0 else gid)
+    uid_val = uid if uid is not None and uid >= 0 else None
+    gid_val = gid if gid is not None and gid >= 0 else None
     with _handle_errors():
         if description is None and author is None and uid is None and gid is None:
             meta = store.load_meta(template_name)
@@ -484,6 +484,14 @@ def _find_container_cli() -> str | None:
     return None
 
 
+def _require_container_cli() -> str:
+    cli = _find_container_cli()
+    if cli is None:
+        con.error("docker or podman not found in PATH.")
+        raise typer.Exit(1)
+    return cli
+
+
 # Local .devcontainer/ runs get devcontainer.local_folder; template runs get
 # only the capsule.workspace id label.
 _WORKSPACE_LABELS = ("devcontainer.local_folder", "capsule.workspace")
@@ -525,10 +533,7 @@ def _container_workspace(c: dict) -> str:
 @app.command("ps")
 def cmd_ps() -> None:
     """List all devcontainers (running and stopped)."""
-    cli = _find_container_cli()
-    if cli is None:
-        con.error("docker or podman not found in PATH.")
-        raise typer.Exit(1)
+    cli = _require_container_cli()
     containers = _list_devcontainers(cli)
     if not containers:
         con.info("No devcontainers found.")
@@ -556,10 +561,7 @@ def cmd_stop(
     ] = False,
 ) -> None:
     """Stop the devcontainer for the current directory (or given workspace path)."""
-    cli = _find_container_cli()
-    if cli is None:
-        con.error("docker or podman not found in PATH.")
-        raise typer.Exit(1)
+    cli = _require_container_cli()
     target = str(Path(workspace).resolve() if workspace else Path.cwd())
     matching = [
         c for c in _list_devcontainers(cli) if _container_workspace(c) == target
@@ -612,10 +614,10 @@ def cmd_doctor() -> None:
                 all_ok = False
             else:
                 try:
-                    json.loads(json_path.read_text(encoding="utf-8"))
+                    store._validate_json(json_path)
                     con.success(f"Template '{entry['name']}': OK")
-                except json.JSONDecodeError as e:
-                    con.error(f"Template '{entry['name']}': invalid JSON: {e}")
+                except InvalidJSON as e:
+                    con.error(f"Template '{entry['name']}': {e}")
                     all_ok = False
 
     if CONFIG_FILE.exists():
@@ -655,10 +657,7 @@ def _ensure_container_up(
             config_path = str(json_path)
         label = template_name
     elif local.exists():
-        try:
-            label = json.loads(local.read_text()).get("name", ".devcontainer/")
-        except (OSError, json.JSONDecodeError):
-            label = ".devcontainer/"
+        label = _load_devcontainer(None, str(Path.cwd())).get("name", ".devcontainer/")
     else:
         entries = store.list_templates()
         if not entries:
@@ -748,7 +747,7 @@ def _build_exec_cmd(config_path: str | None, cfg: RunConfig, cwd: str) -> list[s
     return exec_cmd
 
 
-def _devcontainer_mount_paths(config_path: str | None, cwd: str) -> set[str]:
+def _load_devcontainer(config_path: str | None, cwd: str) -> dict:
     json_path = (
         Path(config_path)
         if config_path
@@ -756,11 +755,14 @@ def _devcontainer_mount_paths(config_path: str | None, cwd: str) -> set[str]:
     )
     try:
         data = json.loads(json_path.read_text(encoding="utf-8"))
-        mounts = data.get("mounts", [])
-    except (OSError, json.JSONDecodeError, AttributeError):
-        return set()
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _devcontainer_mount_paths(config_path: str | None, cwd: str) -> set[str]:
     paths: set[str] = set()
-    for m in mounts:
+    for m in _load_devcontainer(config_path, cwd).get("mounts", []):
         if isinstance(m, str):
             for part in m.split(","):
                 k, _, v = part.partition("=")
@@ -775,14 +777,10 @@ def _devcontainer_mount_paths(config_path: str | None, cwd: str) -> set[str]:
 
 def _read_devcontainer_shell(config_path: str | None, cwd: str) -> str | None:
     """Return customizations.capsule.shell from the active devcontainer.json, or None."""
-    if config_path:
-        json_path = Path(config_path)
-    else:
-        json_path = Path(cwd) / ".devcontainer" / "devcontainer.json"
+    data = _load_devcontainer(config_path, cwd)
     try:
-        data = json.loads(json_path.read_text(encoding="utf-8"))
-        return data.get("customizations", {}).get("capsule", {}).get("shell")
-    except (OSError, json.JSONDecodeError, AttributeError):
+        return data["customizations"]["capsule"]["shell"]
+    except (KeyError, TypeError):
         return None
 
 

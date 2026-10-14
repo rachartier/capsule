@@ -98,7 +98,7 @@ def subprocess_output(text: str) -> None:
     for line in text.splitlines():
         clean = _clean(line)
         if clean:
-            _console.print(f"{escape(clean)}")
+            _console.print(escape(clean))
 
 
 def print_table(headers: list[str], rows: list[list[str]]) -> None:
