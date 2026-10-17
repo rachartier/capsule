@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from capsule.run_config import RunConfig
+from capsule.templates import InvalidJSON
 
 log = logging.getLogger(__name__)
 
@@ -28,13 +29,21 @@ class Workspace:
 
 
 def load_devcontainer(path: Path) -> dict[str, object]:
-    """Reads a devcontainer.json; a missing or invalid file reads as empty."""
+    """Reads a devcontainer.json.
+
+    Raises:
+        FileNotFoundError: The file does not exist.
+        InvalidJSON: The file is not a JSON object.
+    """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    except json.JSONDecodeError as e:
+        raise InvalidJSON(f"Invalid JSON in {path}: {e}") from e
 
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        raise InvalidJSON(f"Invalid devcontainer.json {path}: expected a JSON object")
+
+    return data
 
 
 def mount_paths(devcontainer: Mapping[str, object]) -> set[str]:

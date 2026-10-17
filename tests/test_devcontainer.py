@@ -13,6 +13,7 @@ from capsule.devcontainer import (
     up_command,
 )
 from capsule.run_config import RunConfig
+from capsule.templates import InvalidJSON
 
 
 def _write_devcontainer(path: Path, data: object) -> None:
@@ -26,18 +27,21 @@ class TestLoadDevcontainer:
         _write_devcontainer(dc, {"name": "test"})
         assert load_devcontainer(dc) == {"name": "test"}
 
-    def test_empty_on_invalid_json(self, tmp_path: Path) -> None:
+    def test_raises_on_invalid_json(self, tmp_path: Path) -> None:
         dc = tmp_path / "devcontainer.json"
         dc.write_text("{bad json", encoding="utf-8")
-        assert load_devcontainer(dc) == {}
+        with pytest.raises(InvalidJSON):
+            load_devcontainer(dc)
 
-    def test_empty_when_not_an_object(self, tmp_path: Path) -> None:
+    def test_raises_when_not_an_object(self, tmp_path: Path) -> None:
         dc = tmp_path / "devcontainer.json"
         _write_devcontainer(dc, ["not", "an", "object"])
-        assert load_devcontainer(dc) == {}
+        with pytest.raises(InvalidJSON, match="JSON object"):
+            load_devcontainer(dc)
 
-    def test_empty_when_missing(self, tmp_path: Path) -> None:
-        assert load_devcontainer(tmp_path / "nonexistent.json") == {}
+    def test_raises_when_missing(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            load_devcontainer(tmp_path / "nonexistent.json")
 
 
 class TestWorkspace:

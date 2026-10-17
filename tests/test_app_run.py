@@ -57,6 +57,15 @@ def test_run_uses_devcontainer_shell(local_project: Path) -> None:
     assert "-- /bin/zsh" in result.output.replace("\n", " ")
 
 
+def test_run_reports_invalid_devcontainer_json(local_project: Path) -> None:
+    dc = local_project / ".devcontainer" / "devcontainer.json"
+    dc.parent.mkdir()
+    dc.write_text("{bad json", encoding="utf-8")
+    result = CliRunner().invoke(app_module.app, ["run", "--dry-run"])
+    assert result.exit_code == 1
+    assert "Invalid JSON" in result.output
+
+
 def test_run_without_devcontainer_or_templates_hints_add(
     local_project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
