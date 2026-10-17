@@ -73,3 +73,16 @@ def test_run_without_devcontainer_or_templates_hints_add(
     result = CliRunner().invoke(app_module.app, ["run", "--dry-run"])
     assert result.exit_code == 1
     assert "Run `capsule add` to store a template first." in result.output
+
+
+def test_run_applies_override_of_picked_template(
+    local_project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = TemplateStore(local_project / "templates")
+    _write_devcontainer(local_project / "py" / "devcontainer.json", {})
+    store.add(local_project / "py", "py")
+    store.save_run_override("py", uid=4242, gid=None)
+    monkeypatch.setattr(context, "store", store)
+    result = CliRunner().invoke(app_module.app, ["run", "--dry-run"])
+    assert result.exit_code == 0
+    assert "UID=4242" in result.output.replace("\n", " ")

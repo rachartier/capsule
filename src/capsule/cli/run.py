@@ -69,7 +69,7 @@ def _resolve_workspace(template_name: str | None) -> Workspace:
     return Workspace(cwd, template=template_name, config_path=json_path)
 
 
-def _load_run_config(template_name: str | None, *, quiet: bool) -> RunConfig:
+def _load_run_config(workspace: Workspace, *, quiet: bool) -> RunConfig:
     """Loads config.toml, then applies --quiet and the template's UID/GID override."""
     with context.handle_errors():
         cfg = RunConfig.load(CONFIG_FILE)
@@ -77,8 +77,8 @@ def _load_run_config(template_name: str | None, *, quiet: bool) -> RunConfig:
     if quiet:
         cfg = dataclasses.replace(cfg, quiet=True)
 
-    if template_name:
-        override = context.store.load_run_override(template_name)
+    if workspace.template:
+        override = context.store.load_run_override(workspace.template)
         cfg = dataclasses.replace(
             cfg,
             uid=override.uid if override.uid is not None else cfg.uid,
@@ -125,7 +125,7 @@ def _ensure_container_up(
     """
     _require_devcontainer_cli()
     workspace = _resolve_workspace(template_name)
-    cfg = _load_run_config(template_name, quiet=quiet)
+    cfg = _load_run_config(workspace, quiet=quiet)
     with context.handle_errors():
         devcontainer = load_devcontainer(workspace.devcontainer_json)
 
