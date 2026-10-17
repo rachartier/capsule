@@ -269,6 +269,14 @@ def test_meta_preserved_when_provenance_resaved(
     assert store.load_provenance("python").ref == "v2"
 
 
+def test_meta_with_quotes_round_trips(store: TemplateStore, tmp_path: Path) -> None:
+    store.add(_make_template(tmp_path, "python"), "python")
+    store.save_provenance("python", GitSource("https://github.com/x/y.git", None, None))
+    store.save_meta("python", description='Say "hi" \\ bye', author=None)
+    assert store.load_meta("python")["description"] == 'Say "hi" \\ bye'
+    assert store.load_provenance("python").url == "https://github.com/x/y.git"
+
+
 def test_meta_in_list_templates(store: TemplateStore, tmp_path: Path) -> None:
     store.add(_make_template(tmp_path, "python"), "python")
     store.save_meta("python", description="Python dev env", author=None)

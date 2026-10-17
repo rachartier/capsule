@@ -115,11 +115,9 @@ def _flatten(obj: object, prefix: str = "") -> list[tuple[str, str]]:
 
 
 def _toml_table(name: str | None, values: Mapping[str, object]) -> list[str]:
+    # json.dumps quotes strings with escapes that TOML basic strings also accept.
     lines = [f"[{name}]"] if name else []
-    lines += [
-        f"{key} = {value}" if isinstance(value, int) else f'{key} = "{value}"'
-        for key, value in values.items()
-    ]
+    lines += [f"{key} = {json.dumps(value)}" for key, value in values.items()]
     return lines
 
 
