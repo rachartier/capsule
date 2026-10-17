@@ -7,6 +7,7 @@ from collections.abc import Generator
 import typer
 
 from capsule import console as con
+from capsule import containers
 from capsule.config import TEMPLATES_DIR
 from capsule.run_config import InvalidConfig
 from capsule.sources import GitSubpathNotFound, RemoteFetchError
@@ -46,6 +47,7 @@ def handle_errors() -> Generator[None]:
         FileNotFoundError,
         RemoteFetchError,
         GitSubpathNotFound,
+        containers.ContainerCliError,
     ) as e:
         con.error(str(e))
         raise typer.Exit(1) from e

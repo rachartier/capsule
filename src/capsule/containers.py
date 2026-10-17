@@ -4,6 +4,7 @@ import json
 import logging
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
@@ -11,6 +12,10 @@ log = logging.getLogger(__name__)
 # Local .devcontainer/ runs get devcontainer.local_folder; template runs get
 # only the capsule.workspace id label.
 _WORKSPACE_LABELS = ("devcontainer.local_folder", "capsule.workspace")
+
+
+class ContainerCliError(Exception):
+    """A docker or podman command that failed."""
 
 
 @dataclass(frozen=True)
@@ -69,30 +74,45 @@ def parse_containers(output: str) -> list[Container]:
     return containers
 
 
+def _run(cmd: Sequence[str]) -> str:
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        stderr = (result.stderr or "").strip().splitlines()
+        tail = stderr[-1] if stderr else f"exited with status {result.returncode}"
+        raise ContainerCliError(f"`{' '.join(cmd)}` failed: {tail}")
+
+    return result.stdout
+
+
 def list_devcontainers(cli: str) -> list[Container]:
-    """Returns every devcontainer, running or stopped, that capsule or VS Code started."""
+    """Returns every devcontainer, running or stopped, that capsule or VS Code started.
+
+    Raises:
+        ContainerCliError: The container CLI failed.
+    """
     by_id: dict[str, Container] = {}
     for label in _WORKSPACE_LABELS:
-        cmd = [
-            cli,
-            "ps",
-            "--all",
-            "--format",
-            "{{json .}}",
-            "--filter",
-            f"label={label}",
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        by_id.update((c.id, c) for c in parse_containers(result.stdout))
+        output = _run(
+            [cli, "ps", "--all", "--format", "{{json .}}", "--filter", f"label={label}"]
+        )
+        by_id.update((c.id, c) for c in parse_containers(output))
 
     return list(by_id.values())
 
 
 def stop(cli: str, container: Container) -> None:
-    """Stops a container."""
-    subprocess.run([cli, "stop", container.id], check=False)
+    """Stops a container.
+
+    Raises:
+        ContainerCliError: The container CLI failed.
+    """
+    _run([cli, "stop", container.id])
 
 
 def remove(cli: str, container: Container) -> None:
-    """Stops and deletes a container."""
-    subprocess.run([cli, "rm", "-f", container.id], check=False)
+    """Stops and deletes a container.
+
+    Raises:
+        ContainerCliError: The container CLI failed.
+    """
+    _run([cli, "rm", "-f", container.id])

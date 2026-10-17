@@ -4,7 +4,7 @@ import subprocess
 import pytest
 
 from capsule import containers
-from capsule.containers import list_devcontainers, parse_containers
+from capsule.containers import ContainerCliError, list_devcontainers, parse_containers
 
 
 def test_parse_containers_reads_workspace_label() -> None:
@@ -48,3 +48,16 @@ def test_list_devcontainers_finds_local_and_template_containers(
     monkeypatch.setattr(containers.subprocess, "run", fake_run)
     found = list_devcontainers("docker")
     assert sorted(c.workspace for c in found) == ["/proj/a", "/proj/b"]
+
+
+def test_list_devcontainers_raises_when_cli_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            cmd, 1, stdout="", stderr="Cannot connect to the Docker daemon"
+        )
+
+    monkeypatch.setattr(containers.subprocess, "run", fake_run)
+    with pytest.raises(ContainerCliError, match="Cannot connect"):
+        list_devcontainers("docker")
