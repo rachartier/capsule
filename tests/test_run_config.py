@@ -133,3 +133,24 @@ def test_uid_gid_partial(tmp_path: Path) -> None:
     assert cfg.uid == 42
     assert cfg.gid is None
     assert cfg.resolved_gid() == os.getgid()
+
+
+@pytest.mark.parametrize("value", ['"abc"', "true", "1.5"])
+def test_invalid_uid_rejected(tmp_path: Path, value: str) -> None:
+    p = tmp_path / "config.toml"
+    _write(p, f"[run]\nuid = {value}\n")
+    with pytest.raises(InvalidConfig, match="uid"):
+        RunConfig.load(p)
+
+
+def test_numeric_string_uid_accepted(tmp_path: Path) -> None:
+    p = tmp_path / "config.toml"
+    _write(p, '[run]\ngid = "1000"\n')
+    assert RunConfig.load(p).gid == 1000
+
+
+def test_invalid_toml_raises_invalid_config(tmp_path: Path) -> None:
+    p = tmp_path / "config.toml"
+    _write(p, "[run\n")
+    with pytest.raises(InvalidConfig, match="Invalid TOML"):
+        RunConfig.load(p)

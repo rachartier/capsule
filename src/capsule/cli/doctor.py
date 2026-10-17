@@ -1,7 +1,6 @@
 """The command that checks capsule's environment."""
 
 import shutil
-import tomllib
 
 import typer
 
@@ -71,7 +70,7 @@ def _doctor_config() -> bool:
 
     try:
         RunConfig.load(CONFIG_FILE)
-    except (InvalidConfig, tomllib.TOMLDecodeError) as e:
+    except InvalidConfig as e:
         con.error(f"config.toml is invalid: {e}")
         return False
 

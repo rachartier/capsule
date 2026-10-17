@@ -36,13 +36,14 @@ def _optional_int(section: Mapping[str, object], key: str) -> int | None:
     if value is None:
         return None
 
+    error = InvalidConfig(f"Invalid {key} {value!r}: expected an integer.")
     if isinstance(value, bool) or not isinstance(value, int | str):
-        return None
+        raise error
 
     try:
         return int(value)
-    except ValueError:
-        return None
+    except ValueError as e:
+        raise error from e
 
 
 def _expand_env(raw_env: Mapping[str, object]) -> dict[str, str]:
@@ -89,14 +90,16 @@ class RunConfig:
             The parsed config.
 
         Raises:
-            InvalidConfig: A mount has options.
-            tomllib.TOMLDecodeError: The file is not valid TOML.
+            InvalidConfig: The file is not valid TOML or holds an invalid value.
         """
         if not path.exists():
             return cls()
 
-        with path.open("rb") as f:
-            data = tomllib.load(f)
+        try:
+            with path.open("rb") as f:
+                data = tomllib.load(f)
+        except tomllib.TOMLDecodeError as e:
+            raise InvalidConfig(f"Invalid TOML in {path}: {e}") from e
 
         mounts = list(data.get("volumes", {}).get("mounts", []))
         if dotfiles := data.get("dotfiles", {}).get("mounts"):
