@@ -1,3 +1,5 @@
+"""XDG-aware paths for capsule's config, template store and log file."""
+
 import logging
 import os
 from pathlib import Path
@@ -12,18 +14,20 @@ CONFIG_FILE = CONFIG_DIR / "config.toml"
 
 
 def setup_logging() -> None:
-    fmt = "[%(asctime)s] [%(levelname)s] %(message)s"
-    datefmt = "%Y-%m-%d %H:%M:%S"
+    """Sends all log records to LOG_FILE and warnings or worse to stderr."""
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    )
+
+    file_handler = logging.FileHandler(LOG_FILE)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.WARNING)
+    stream_handler.setFormatter(formatter)
+
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
-
-    fh = logging.FileHandler(LOG_FILE)
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
-
-    sh = logging.StreamHandler()
-    sh.setLevel(logging.WARNING)
-    sh.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
-
-    root.addHandler(fh)
-    root.addHandler(sh)
+    root.addHandler(file_handler)
+    root.addHandler(stream_handler)

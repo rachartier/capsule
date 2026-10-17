@@ -1,9 +1,11 @@
+"""Parses template source strings and fetches them to a local directory."""
+
 import contextlib
 import logging
 import re
 import subprocess
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,20 +13,24 @@ log = logging.getLogger(__name__)
 
 
 class RemoteFetchError(Exception):
-    pass
+    """A git source that is malformed or cannot be cloned."""
 
 
 class GitSubpathNotFound(Exception):
-    pass
+    """A subpath that does not exist in the cloned repository."""
 
 
 @dataclass(frozen=True)
 class LocalSource:
+    """A template source on the local filesystem."""
+
     path: Path
 
 
 @dataclass(frozen=True)
 class GitSource:
+    """A template source in a git repository, optionally at a ref and subpath."""
+
     url: str
     ref: str | None
     subpath: str | None
@@ -37,27 +43,47 @@ _GH_URL_RE = re.compile(
 _SCP_GIT_RE = re.compile(r"^[\w.-]+@[\w.-]+:[\w./~-]+$")
 
 
-def parse_source(raw: str) -> LocalSource | GitSource:
-    if raw.startswith("gh:"):
-        owner, slash, rest = raw[3:].partition("/")
-        if not slash or not owner:
-            raise RemoteFetchError(f"Invalid gh: shorthand '{raw}'. Expected 'gh:owner/repo[@ref][/subpath]'.")
-        repo_ref, _, subpath_str = rest.partition("/")
-        repo, _, ref_str = repo_ref.partition("@")
-        if not repo:
-            raise RemoteFetchError(f"Invalid gh: shorthand '{raw}'. Repo name is empty.")
-        return GitSource(
-            url=f"https://github.com/{owner}/{repo}.git",
-            ref=ref_str or None,
-            subpath=subpath_str or None,
+def _parse_gh_shorthand(raw: str) -> GitSource:
+    owner, slash, rest = raw.removeprefix("gh:").partition("/")
+    if not slash or not owner:
+        raise RemoteFetchError(
+            f"Invalid gh: shorthand '{raw}'. Expected 'gh:owner/repo[@ref][/subpath]'."
         )
 
+    repo_ref, _, subpath = rest.partition("/")
+    repo, _, ref = repo_ref.partition("@")
+    if not repo:
+        raise RemoteFetchError(f"Invalid gh: shorthand '{raw}'. Repo name is empty.")
+
+    return GitSource(
+        url=f"https://github.com/{owner}/{repo}.git",
+        ref=ref or None,
+        subpath=subpath or None,
+    )
+
+
+def parse_source(raw: str) -> LocalSource | GitSource:
+    """Parses a source string given on the command line.
+
+    Args:
+        raw: A local path, `gh:owner/repo[@ref][/subpath]`, a GitHub tree URL
+            or any git remote URL.
+
+    Returns:
+        The git source for anything that looks like a remote, else the local
+        path resolved to an absolute one.
+
+    Raises:
+        RemoteFetchError: A `gh:` shorthand is malformed.
+    """
+    if raw.startswith("gh:"):
+        return _parse_gh_shorthand(raw)
+
     if m := _GH_URL_RE.match(raw):
-        owner, repo = m.group("owner"), m.group("repo")
         return GitSource(
-            url=f"https://github.com/{owner}/{repo}.git",
-            ref=m.group("ref"),
-            subpath=m.group("subpath"),
+            url=f"https://github.com/{m['owner']}/{m['repo']}.git",
+            ref=m["ref"],
+            subpath=m["subpath"],
         )
 
     if (
@@ -71,18 +97,36 @@ def parse_source(raw: str) -> LocalSource | GitSource:
 
 
 @contextlib.contextmanager
-def materialize(source: LocalSource | GitSource) -> Iterator[Path]:
+def materialize(source: LocalSource | GitSource) -> Generator[Path]:
+    """Makes a source available as a local directory for the duration of the block.
+
+    A git source is shallow-cloned into a temporary directory that is removed
+    on exit.
+
+    Args:
+        source: The source to fetch.
+
+    Yields:
+        The local directory holding the source, at its subpath if any.
+
+    Raises:
+        RemoteFetchError: git is missing or the clone failed.
+        GitSubpathNotFound: The subpath does not exist in the repository.
+    """
     if isinstance(source, LocalSource):
         yield source.path
         return
+
     with tempfile.TemporaryDirectory(prefix="capsule-fetch-") as tmp:
-        tmp_path = Path(tmp) / "repo"
-        _git_clone(source, tmp_path)
-        root = tmp_path / source.subpath if source.subpath else tmp_path
+        repo = Path(tmp) / "repo"
+        _git_clone(source, repo)
+
+        root = repo / source.subpath if source.subpath else repo
         if not root.is_dir():
             raise GitSubpathNotFound(
                 f"Subpath {source.subpath!r} not found in {source.url}"
             )
+
         yield root
 
 
@@ -91,6 +135,7 @@ def _git_clone(source: GitSource, dest: Path) -> None:
     if source.ref:
         cmd += ["--branch", source.ref]
     cmd += [source.url, str(dest)]
+
     log.info("git clone: %s", " ".join(cmd))
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
