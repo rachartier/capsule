@@ -5,7 +5,8 @@ import pytest
 from typer.testing import CliRunner
 
 from capsule import console as con
-from capsule.app import _add_all_templates, app
+from capsule.app import app
+from capsule.cli.add import _add_all_templates
 from capsule.templates import TemplateStore
 
 
@@ -48,7 +49,10 @@ def test_add_all_skips_conflict(tmp_path, store):
 
     assert not had_errors
     assert (store._dir / "node").is_dir()
-    assert json.loads((store._dir / "python" / "devcontainer.json").read_text())["name"] == "original"
+    assert (
+        json.loads((store._dir / "python" / "devcontainer.json").read_text())["name"]
+        == "original"
+    )
 
 
 def test_add_all_conflict_only(tmp_path, store):

@@ -106,6 +106,7 @@ def test_mount_to_devcontainer_format() -> None:
 
 def test_uid_gid_defaults_to_host(tmp_path: Path) -> None:
     import os
+
     cfg = RunConfig.load(tmp_path / "nonexistent.toml")
     assert cfg.uid is None
     assert cfg.gid is None
@@ -125,6 +126,7 @@ def test_uid_gid_explicit_values(tmp_path: Path) -> None:
 
 def test_uid_gid_partial(tmp_path: Path) -> None:
     import os
+
     p = tmp_path / "config.toml"
     _write(p, "[run]\nuid = 42\n")
     cfg = RunConfig.load(p)

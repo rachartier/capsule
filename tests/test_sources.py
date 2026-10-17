@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from capsule.app import _default_template_name
+from capsule.cli.add import _default_template_name
 from capsule.sources import (
     GitSource,
     GitSubpathNotFound,
@@ -163,7 +163,10 @@ def test_materialize_git_no_subpath():
         dest.mkdir(parents=True, exist_ok=True)
         return MagicMock(returncode=0)
 
-    with patch("capsule.sources.subprocess.run", side_effect=_side_effect), materialize(source) as p:
+    with (
+        patch("capsule.sources.subprocess.run", side_effect=_side_effect),
+        materialize(source) as p,
+    ):
         assert p.is_dir()
         assert p.name == "repo"
 
@@ -178,7 +181,10 @@ def test_materialize_git_with_subpath():
         (dest / "templates" / "python").mkdir(parents=True, exist_ok=True)
         return MagicMock(returncode=0)
 
-    with patch("capsule.sources.subprocess.run", side_effect=_side_effect), materialize(source) as p:
+    with (
+        patch("capsule.sources.subprocess.run", side_effect=_side_effect),
+        materialize(source) as p,
+    ):
         assert p.is_dir()
         assert p.name == "python"
 
@@ -193,13 +199,21 @@ def test_materialize_git_subpath_missing():
         dest.mkdir(parents=True, exist_ok=True)
         return MagicMock(returncode=0)
 
-    with patch("capsule.sources.subprocess.run", side_effect=_side_effect), pytest.raises(GitSubpathNotFound, match="does/not/exist"), materialize(source):
+    with (
+        patch("capsule.sources.subprocess.run", side_effect=_side_effect),
+        pytest.raises(GitSubpathNotFound, match="does/not/exist"),
+        materialize(source),
+    ):
         pass
 
 
 def test_materialize_git_not_found_on_path():
     source = GitSource(url="https://github.com/owner/repo.git", ref=None, subpath=None)
-    with patch("capsule.sources.subprocess.run", side_effect=FileNotFoundError), pytest.raises(RemoteFetchError, match="git is required"), materialize(source):
+    with (
+        patch("capsule.sources.subprocess.run", side_effect=FileNotFoundError),
+        pytest.raises(RemoteFetchError, match="git is required"),
+        materialize(source),
+    ):
         pass
 
 
@@ -208,7 +222,11 @@ def test_materialize_git_clone_failure():
     err = subprocess.CalledProcessError(
         128, ["git", "clone"], stderr="fatal: repo not found\n"
     )
-    with patch("capsule.sources.subprocess.run", side_effect=err), pytest.raises(RemoteFetchError, match="repo not found"), materialize(source):
+    with (
+        patch("capsule.sources.subprocess.run", side_effect=err),
+        pytest.raises(RemoteFetchError, match="repo not found"),
+        materialize(source),
+    ):
         pass
 
 
@@ -225,7 +243,10 @@ def test_materialize_git_clone_uses_branch_flag():
         dest.mkdir(parents=True, exist_ok=True)
         return MagicMock(returncode=0)
 
-    with patch("capsule.sources.subprocess.run", side_effect=_side_effect), materialize(source):
+    with (
+        patch("capsule.sources.subprocess.run", side_effect=_side_effect),
+        materialize(source),
+    ):
         pass
 
     assert "--branch" in captured_cmd
@@ -243,7 +264,10 @@ def test_materialize_git_clone_depth_1():
         dest.mkdir(parents=True, exist_ok=True)
         return MagicMock(returncode=0)
 
-    with patch("capsule.sources.subprocess.run", side_effect=_side_effect), materialize(source):
+    with (
+        patch("capsule.sources.subprocess.run", side_effect=_side_effect),
+        materialize(source),
+    ):
         pass
 
     assert "--depth" in captured_cmd
