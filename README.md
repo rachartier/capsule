@@ -1,5 +1,5 @@
 <p align="center">
-    <img width="220" height="220" aligh="center" alt="image" src="https://github.com/user-attachments/assets/6033bc0a-5cb0-4e9b-92a6-5e2bfdecfd38" />
+    <img width="248" height="248" alt="capsule-logo" src="https://github.com/user-attachments/assets/199a40a0-5cbe-42e7-a5db-39dd205ee387" />
 </p>
 
 
