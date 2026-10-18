@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -199,3 +200,31 @@ def test_cmd_meta_empty(isolated_store: TemplateStore, tmp_path: Path) -> None:
 def test_cmd_meta_not_found(isolated_store: TemplateStore) -> None:
     result = runner.invoke(app, ["meta", "nonexistent", "--description", "x"])
     assert result.exit_code == 1
+
+
+def test_cmd_meta_negative_uid_unsets_override(
+    isolated_store: TemplateStore, tmp_path: Path
+) -> None:
+    _add_template(isolated_store, tmp_path, "python")
+    runner.invoke(app, ["meta", "python", "--uid", "1000", "--gid", "1001"])
+    result = runner.invoke(app, ["meta", "python", "--uid", "-1"])
+    assert result.exit_code == 0
+    override = isolated_store.load_run_override("python")
+    assert override.uid is None
+    assert override.gid == 1001
+
+
+# -- capsule edit --
+
+
+def test_cmd_edit_splits_editor_arguments(
+    isolated_store: TemplateStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add_template(isolated_store, tmp_path, "python")
+    json_path = isolated_store.view("python")[1]
+    monkeypatch.setenv("EDITOR", "code -w")
+    calls: list[tuple[str, list[str]]] = []
+    monkeypatch.setattr(os, "execvp", lambda file, args: calls.append((file, args)))
+    result = runner.invoke(app, ["edit", "python"])
+    assert result.exit_code == 0
+    assert calls == [("code", ["code", "-w", str(json_path)])]

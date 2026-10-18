@@ -1,6 +1,7 @@
 """Commands that view and manage the stored templates."""
 
 import os
+import shlex
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -155,8 +156,8 @@ def cmd_edit(
     with context.handle_errors():
         _, json_path = context.store.view(template_name)
 
-    editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "nano"
-    os.execvp(editor, [editor, str(json_path)])
+    editor = shlex.split(os.environ.get("EDITOR") or os.environ.get("VISUAL") or "nano")
+    os.execvp(editor[0], [*editor, str(json_path)])
 
 
 def _show_meta(template_name: str) -> None:
@@ -173,6 +174,14 @@ def _show_meta(template_name: str) -> None:
         return
 
     con.print_table(["Key", "Value"], rows)
+
+
+def _merge_id(requested: int | None, current: int | None) -> int | None:
+    """Applies a --uid/--gid value: unset keeps the current id, negative removes it."""
+    if requested is None:
+        return current
+
+    return requested if requested >= 0 else None
 
 
 @app.command("meta")
@@ -206,10 +215,9 @@ def cmd_meta(
         if description is not None or author is not None:
             context.store.save_meta(template_name, description, author)
         if uid is not None or gid is not None:
+            current = context.store.load_run_override(template_name)
             context.store.save_run_override(
-                template_name,
-                uid if uid is not None and uid >= 0 else None,
-                gid if gid is not None and gid >= 0 else None,
+                template_name, _merge_id(uid, current.uid), _merge_id(gid, current.gid)
             )
 
         con.success(f"Metadata updated for '{template_name}'.")
