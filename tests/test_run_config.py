@@ -15,7 +15,7 @@ def test_load_defaults_when_no_file(tmp_path: Path) -> None:
     assert cfg.shell is None
     assert cfg.mounts == []
     assert cfg.env == {}
-    assert cfg.quiet is True
+    assert cfg.quiet is False
 
 
 def test_load_shell(tmp_path: Path) -> None:
@@ -153,4 +153,24 @@ def test_invalid_toml_raises_invalid_config(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
     _write(p, "[run\n")
     with pytest.raises(InvalidConfig, match="Invalid TOML"):
+        RunConfig.load(p)
+
+
+@pytest.mark.parametrize(
+    ("content", "match"),
+    [
+        ('volumes = "x"\n', r"\[volumes\]"),
+        ("env = []\n", r"\[env\]"),
+        ("[volumes]\nmounts = [1]\n", "mounts"),
+        ('[volumes]\nmounts = "/a:/b"\n', "mounts"),
+        ('[dotfiles]\nmounts = "/a:/b"\n', r"\[dotfiles\]"),
+        ("[run]\nshell = 3\n", "shell"),
+    ],
+)
+def test_wrongly_typed_values_raise_invalid_config(
+    tmp_path: Path, content: str, match: str
+) -> None:
+    p = tmp_path / "config.toml"
+    _write(p, content)
+    with pytest.raises(InvalidConfig, match=match):
         RunConfig.load(p)

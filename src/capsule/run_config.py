@@ -31,6 +31,22 @@ def _validate_mounts(mounts: Sequence[str]) -> list[str]:
     return list(mounts)
 
 
+def _section(data: Mapping[str, object], name: str) -> Mapping[str, object]:
+    section = data.get(name, {})
+    if not isinstance(section, Mapping):
+        raise InvalidConfig(f"Invalid [{name}]: expected a table.")
+
+    return section
+
+
+def _mounts(data: Mapping[str, object], section: str) -> list[str]:
+    mounts = _section(data, section).get("mounts", [])
+    if not isinstance(mounts, list) or not all(isinstance(m, str) for m in mounts):
+        raise InvalidConfig(f"Invalid [{section}] mounts: expected a list of strings.")
+
+    return mounts
+
+
 def _optional_int(section: Mapping[str, object], key: str) -> int | None:
     value = section.get(key)
     if value is None:
@@ -67,7 +83,7 @@ class RunConfig:
     mounts: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     shell: str | None = None
-    quiet: bool = True
+    quiet: bool = False
     uid: int | None = None
     gid: int | None = None
 
@@ -101,16 +117,20 @@ class RunConfig:
         except tomllib.TOMLDecodeError as e:
             raise InvalidConfig(f"Invalid TOML in {path}: {e}") from e
 
-        mounts = list(data.get("volumes", {}).get("mounts", []))
-        if dotfiles := data.get("dotfiles", {}).get("mounts"):
+        mounts = _mounts(data, "volumes")
+        if dotfiles := _mounts(data, "dotfiles"):
             log.warning("[dotfiles] is deprecated: move its mounts to [volumes].")
             mounts += dotfiles
 
-        run = data.get("run", {})
+        run = _section(data, "run")
+        shell = run.get("shell")
+        if shell is not None and not isinstance(shell, str):
+            raise InvalidConfig(f"Invalid shell {shell!r}: expected a string.")
+
         return cls(
             mounts=_validate_mounts(mounts),
-            env=_expand_env(data.get("env", {})),
-            shell=run.get("shell"),
+            env=_expand_env(_section(data, "env")),
+            shell=shell,
             quiet=bool(run.get("quiet", False)),
             uid=_optional_int(run, "uid"),
             gid=_optional_int(run, "gid"),
