@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 from collections.abc import Sequence
@@ -12,6 +13,8 @@ log = logging.getLogger(__name__)
 # Local .devcontainer/ runs get devcontainer.local_folder; template runs get
 # only the capsule.workspace id label.
 _WORKSPACE_LABELS = ("devcontainer.local_folder", "capsule.workspace")
+# Labels are joined with commas, but a value may hold one: split only before a key.
+_LABEL_SEPARATOR = re.compile(r",(?=[\w.-]+=)")
 
 
 class ContainerCliError(Exception):
@@ -39,7 +42,7 @@ def find_container_cli() -> str | None:
 
 
 def _workspace(labels: str) -> str:
-    for part in labels.split(","):
+    for part in _LABEL_SEPARATOR.split(labels):
         key, _, value = part.partition("=")
         if key in _WORKSPACE_LABELS:
             return value

@@ -134,7 +134,8 @@ def _git_clone(source: GitSource, dest: Path) -> None:
     cmd = ["git", "clone", "--depth", "1"]
     if source.ref:
         cmd += ["--branch", source.ref]
-    cmd += [source.url, str(dest)]
+    # `--` stops git from reading a source that starts with `-` as an option.
+    cmd += ["--", source.url, str(dest)]
 
     log.info("git clone: %s", " ".join(cmd))
     try:

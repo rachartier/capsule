@@ -61,3 +61,11 @@ def test_list_devcontainers_raises_when_cli_fails(
     monkeypatch.setattr(containers.subprocess, "run", fake_run)
     with pytest.raises(ContainerCliError, match="Cannot connect"):
         list_devcontainers("docker")
+
+
+def test_parse_containers_keeps_commas_in_workspace_path() -> None:
+    output = json.dumps(
+        {"ID": "d", "Labels": "capsule.workspace=/proj/my,app,env=dev", "Status": "Up"}
+    )
+    [container] = parse_containers(output)
+    assert container.workspace == "/proj/my,app"

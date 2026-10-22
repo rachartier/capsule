@@ -272,3 +272,23 @@ def test_materialize_git_clone_depth_1():
 
     assert "--depth" in captured_cmd
     assert "1" in captured_cmd
+
+
+def test_materialize_git_clone_ends_options_before_url():
+    source = GitSource(url="--upload-pack=x.git", ref=None, subpath=None)
+
+    captured_cmd: list[str] = []
+
+    def _side_effect(cmd, **kwargs):
+        captured_cmd.extend(cmd)
+        dest = Path(cmd[-1])
+        dest.mkdir(parents=True, exist_ok=True)
+        return MagicMock(returncode=0)
+
+    with (
+        patch("capsule.sources.subprocess.run", side_effect=_side_effect),
+        materialize(source),
+    ):
+        pass
+
+    assert captured_cmd[captured_cmd.index("--") + 1] == "--upload-pack=x.git"
