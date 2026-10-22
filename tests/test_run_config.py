@@ -180,3 +180,13 @@ def test_load_env_writes_booleans_as_lowercase(tmp_path: Path) -> None:
     p = tmp_path / "config.toml"
     _write(p, "[env]\nDEBUG = true\n")
     assert RunConfig.load(p).env == {"DEBUG": "true"}
+
+
+def test_mount_with_env_var_holding_colon_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CAPSULE_TEST_SRC", "/a:b")
+    p = tmp_path / "config.toml"
+    _write(p, '[volumes]\nmounts = ["$CAPSULE_TEST_SRC:/x"]\n')
+    with pytest.raises(InvalidConfig, match="Invalid mount"):
+        RunConfig.load(p)

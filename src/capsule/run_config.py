@@ -21,7 +21,7 @@ class InvalidConfig(Exception):
 def _validate_mounts(mounts: Sequence[str]) -> list[str]:
     for mount in mounts:
         # devcontainer --mount accepts no options, so ":ro" would be silently dropped.
-        if len(mount.split(":")) != 2:
+        if len(RunConfig.expand_mount(mount).split(":")) != 2:
             raise InvalidConfig(
                 f"Invalid mount {mount!r}: expected 'host_path:container_path'. "
                 "Options such as ':ro' are not supported; declare read-only mounts "
