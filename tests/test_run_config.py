@@ -174,3 +174,9 @@ def test_wrongly_typed_values_raise_invalid_config(
     _write(p, content)
     with pytest.raises(InvalidConfig, match=match):
         RunConfig.load(p)
+
+
+def test_load_env_writes_booleans_as_lowercase(tmp_path: Path) -> None:
+    p = tmp_path / "config.toml"
+    _write(p, "[env]\nDEBUG = true\n")
+    assert RunConfig.load(p).env == {"DEBUG": "true"}

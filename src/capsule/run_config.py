@@ -65,7 +65,8 @@ def _optional_int(section: Mapping[str, object], key: str) -> int | None:
 def _expand_env(raw_env: Mapping[str, object]) -> dict[str, str]:
     env: dict[str, str] = {}
     for key, value in raw_env.items():
-        raw = str(value)
+        # TOML's true and false become true and false, as shells spell them.
+        raw = str(value).lower() if isinstance(value, bool) else str(value)
         expanded = os.path.expandvars(raw)
         if _UNEXPANDED_RE.search(expanded):
             log.warning(
