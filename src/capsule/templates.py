@@ -4,16 +4,13 @@ import json
 import logging
 import shutil
 import tempfile
-import tomllib
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from capsule.sources import GitSource
+from capsule.template_state import STATE_FILE, InvalidState, read_state, write_state
 
 log = logging.getLogger(__name__)
-
-_STATE_FILE = "capsule.toml"
 
 
 class TemplateNotFound(Exception):
@@ -39,6 +36,10 @@ class MissingDevcontainer(Exception):
 
 class NoProvenance(Exception):
     """A template that was not added from a git source."""
+
+
+class InvalidTemplateName(Exception):
+    """A template name that is empty, `.` or `..`, or holds a path separator."""
 
 
 @dataclass(frozen=True)
@@ -114,11 +115,17 @@ def _flatten(obj: object, prefix: str = "") -> list[tuple[str, str]]:
     return [(prefix, str(obj))]
 
 
-def _toml_table(name: str | None, values: Mapping[str, object]) -> list[str]:
-    # json.dumps quotes strings with escapes that TOML basic strings also accept.
-    lines = [f"[{name}]"] if name else []
-    lines += [f"{key} = {json.dumps(value)}" for key, value in values.items()]
-    return lines
+def _replace_dir(new: Path, dest: Path) -> None:
+    """Moves `new` into the place of `dest`, putting the old `dest` back if the move fails."""
+    old = dest.with_name(f".{dest.name}.old")
+    dest.rename(old)
+    try:
+        new.rename(dest)
+    except Exception:
+        old.rename(dest)
+        raise
+
+    shutil.rmtree(old)
 
 
 class TemplateStore:
@@ -134,6 +141,10 @@ class TemplateStore:
         self._dir.mkdir(parents=True, exist_ok=True)
 
     def _dest(self, name: str) -> Path:
+        """Returns the directory of template `name`, a single path segment."""
+        if name in ("", ".", "..") or "/" in name or "\\" in name:
+            raise InvalidTemplateName(f"Invalid template name {name!r}")
+
         return self._dir / name
 
     def _existing(self, name: str) -> Path:
@@ -148,28 +159,19 @@ class TemplateStore:
 
     def _load_state(self, name: str) -> dict[str, object]:
         """Reads a template's capsule.toml; an unreadable file counts as empty, with a warning."""
-        path = self._dest(name) / _STATE_FILE
-        if not path.exists():
-            return {}
-
         try:
-            with path.open("rb") as f:
-                return tomllib.load(f)
-        except (OSError, tomllib.TOMLDecodeError):
-            log.warning("Could not read %s", path)
+            return read_state(self._dest(name) / STATE_FILE)
+        except InvalidState as e:
+            log.warning("%s", e)
             return {}
 
-    def _save_state(self, name: str, data: Mapping[str, object]) -> None:
-        top = {k: str(v) for k, v in data.items() if k not in ("meta", "run")}
-        lines = _toml_table(None, top)
-        for table in ("run", "meta"):
-            values = data.get(table)
-            if isinstance(values, dict) and values:
-                lines += ["", *_toml_table(table, values)]
+    def _read_state_for_update(self, name: str) -> dict[str, object]:
+        """Reads a template's capsule.toml before it is rewritten.
 
-        (self._dest(name) / _STATE_FILE).write_text(
-            "\n".join(lines) + "\n", encoding="utf-8"
-        )
+        Raises:
+            InvalidState: The file cannot be read, so rewriting it would drop its settings.
+        """
+        return read_state(self._dest(name) / STATE_FILE)
 
     def _section(self, name: str, table: str) -> dict[str, object]:
         section = self._load_state(name).get(table, {})
@@ -255,11 +257,10 @@ class TemplateStore:
         tmp = Path(tempfile.mkdtemp(dir=self._dir, prefix=f".{name}."))
         try:
             shutil.copytree(source, tmp, dirs_exist_ok=True)
-            state = dest / _STATE_FILE
+            state = dest / STATE_FILE
             if state.exists():
-                shutil.copy2(state, tmp / _STATE_FILE)
-            shutil.rmtree(dest)
-            tmp.rename(dest)
+                shutil.copy2(state, tmp / STATE_FILE)
+            _replace_dir(tmp, dest)
         except Exception:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
@@ -332,8 +333,7 @@ class TemplateStore:
             tmp = dest.parent / f".{dest.name}.tmp"
             try:
                 shutil.copytree(src, tmp)
-                shutil.rmtree(dest)
-                tmp.rename(dest)
+                _replace_dir(tmp, dest)
             except Exception:
                 shutil.rmtree(tmp, ignore_errors=True)
                 raise
@@ -361,8 +361,12 @@ class TemplateStore:
         return archive
 
     def save_provenance(self, name: str, source: GitSource) -> None:
-        """Records the git source a template was fetched from, keeping its other state."""
-        data = self._load_state(name)
+        """Records the git source a template was fetched from, keeping its other state.
+
+        Raises:
+            InvalidState: The template's capsule.toml cannot be read.
+        """
+        data = self._read_state_for_update(name)
         data["url"] = source.url
         for key, value in (("ref", source.ref), ("subpath", source.subpath)):
             if value:
@@ -370,7 +374,7 @@ class TemplateStore:
             else:
                 data.pop(key, None)
 
-        self._save_state(name, data)
+        write_state(self._dest(name) / STATE_FILE, data)
 
     def load_provenance(self, name: str) -> GitSource:
         """Returns the git source a template was fetched from.
@@ -404,10 +408,11 @@ class TemplateStore:
 
         Raises:
             TemplateNotFound: No template is named `name`.
+            InvalidState: The template's capsule.toml cannot be read.
         """
         self._existing(name)
 
-        data = self._load_state(name)
+        data = self._read_state_for_update(name)
         meta = self._section(name, "meta")
         if description is not None:
             meta["description"] = description
@@ -416,7 +421,7 @@ class TemplateStore:
         if meta:
             data["meta"] = meta
 
-        self._save_state(name, data)
+        write_state(self._dest(name) / STATE_FILE, data)
 
     def load_run_override(self, name: str) -> RunOverride:
         """Returns a template's UID/GID override; invalid values are ignored with a warning."""
@@ -441,14 +446,15 @@ class TemplateStore:
 
         Raises:
             TemplateNotFound: No template is named `name`.
+            InvalidState: The template's capsule.toml cannot be read.
         """
         self._existing(name)
 
-        data = self._load_state(name)
+        data = self._read_state_for_update(name)
         run = {k: v for k, v in (("uid", uid), ("gid", gid)) if v is not None}
         if run:
             data["run"] = run
         else:
             data.pop("run", None)
 
-        self._save_state(name, data)
+        write_state(self._dest(name) / STATE_FILE, data)

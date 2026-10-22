@@ -11,8 +11,10 @@ from capsule import containers
 from capsule.config import TEMPLATES_DIR
 from capsule.run_config import InvalidConfig
 from capsule.sources import GitSubpathNotFound, RemoteFetchError
+from capsule.template_state import InvalidState
 from capsule.templates import (
     InvalidJSON,
+    InvalidTemplateName,
     MissingDevcontainer,
     NoProvenance,
     TemplateAlreadyExists,
@@ -40,6 +42,8 @@ def handle_errors() -> Generator[None]:
         raise typer.Exit(1) from e
     except (
         InvalidConfig,
+        InvalidState,
+        InvalidTemplateName,
         TemplateAlreadyExists,
         NoProvenance,
         MissingDevcontainer,

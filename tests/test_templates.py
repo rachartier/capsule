@@ -1,11 +1,14 @@
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from capsule.sources import GitSource
+from capsule.template_state import InvalidState
 from capsule.templates import (
     InvalidJSON,
+    InvalidTemplateName,
     MissingDevcontainer,
     NoProvenance,
     RunOverride,
@@ -341,3 +344,69 @@ def test_meta_preserved_when_run_override_resaved(
 def test_save_run_override_not_found(store: TemplateStore) -> None:
     with pytest.raises(TemplateNotFound):
         store.save_run_override("nonexistent", uid=1, gid=1)
+
+
+@pytest.mark.parametrize("name", ["", ".", "..", "a/b", "../victim"])
+def test_invalid_name_is_rejected_before_touching_disk(
+    store: TemplateStore, tmp_path: Path, name: str
+) -> None:
+    victim = _make_template(tmp_path, "victim")
+    with pytest.raises(InvalidTemplateName):
+        store.delete(name)
+
+    assert victim.is_dir()
+    assert store._dir.is_dir()
+
+
+@pytest.mark.parametrize(
+    "save",
+    [
+        lambda s: s.save_meta("python", description="desc", author=None),
+        lambda s: s.save_run_override("python", uid=1000, gid=None),
+        lambda s: s.save_provenance("python", GitSource("https://x/y.git", None, None)),
+    ],
+    ids=["meta", "run", "provenance"],
+)
+def test_save_refuses_unreadable_state(
+    store: TemplateStore, tmp_path: Path, save: Callable[[TemplateStore], None]
+) -> None:
+    store.add(_make_template(tmp_path, "python"), "python")
+    state = store._dir / "python" / "capsule.toml"
+    state.write_text("url = \n", encoding="utf-8")
+
+    with pytest.raises(InvalidState):
+        save(store)
+
+    assert state.read_text(encoding="utf-8") == "url = \n"
+
+
+def test_list_reads_templates_with_unreadable_state(
+    store: TemplateStore, tmp_path: Path
+) -> None:
+    store.add(_make_template(tmp_path, "python"), "python")
+    (store._dir / "python" / "capsule.toml").write_text("url = \n", encoding="utf-8")
+
+    assert [entry.name for entry in store.list_templates()] == ["python"]
+
+
+def test_update_keeps_old_template_when_the_swap_fails(
+    store: TemplateStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_template(store._dir, "python", '{"name": "old"}')
+    src = _make_template(tmp_path, "python", '{"name": "new"}')
+    real_rename = Path.rename
+    failures: list[OSError] = []
+
+    def flaky_rename(self: Path, target: str | Path) -> Path:
+        if Path(target).name == "python" and not failures:
+            failures.append(OSError("disk full"))
+            raise failures[0]
+
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", flaky_rename)
+    with pytest.raises(OSError, match="disk full"):
+        store.update("python", src)
+
+    restored = store._dir / "python" / "devcontainer.json"
+    assert json.loads(restored.read_text(encoding="utf-8")) == {"name": "old"}
