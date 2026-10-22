@@ -1,7 +1,9 @@
 import json
+import sys
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 import capsule.app as app_module
@@ -86,3 +88,18 @@ def test_run_applies_override_of_picked_template(
     result = CliRunner().invoke(app_module.app, ["run", "--dry-run"])
     assert result.exit_code == 0
     assert "UID=4242" in result.output.replace("\n", " ")
+
+
+def test_run_up_exits_with_the_failed_status(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cmd = [sys.executable, "-c", "print('boom'); raise SystemExit(3)"]
+    with pytest.raises(typer.Exit) as exc_info:
+        run_module._run_up(cmd, "web", quiet=True)
+
+    assert exc_info.value.exit_code == 3
+    assert "boom" in capsys.readouterr().out
+
+
+def test_run_up_returns_when_devcontainer_succeeds() -> None:
+    run_module._run_up([sys.executable, "-c", "print('ok')"], "web", quiet=False)

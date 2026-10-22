@@ -92,11 +92,12 @@ def _run_up(up_cmd: Sequence[str], label: str, *, quiet: bool) -> None:
     """Runs `devcontainer up`, streaming its output unless quiet; exits on failure."""
     log.info("devcontainer up: %s", " ".join(up_cmd))
     lines: list[str] = []
-    proc = subprocess.Popen(
-        up_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-    )
-
-    with con.launching(f"Starting devcontainer '{label}'...", quiet=quiet) as on_line:
+    with (
+        subprocess.Popen(
+            up_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        ) as proc,
+        con.launching(f"Starting devcontainer '{label}'...", quiet=quiet) as on_line,
+    ):
         for raw in proc.stdout or ():
             line = raw.rstrip("\n")
             lines.append(line)
