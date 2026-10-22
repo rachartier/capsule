@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from capsule import console as con
 from capsule.app import app
+from capsule.cli import context
 from capsule.cli.add import _add_all_templates
 from capsule.templates import TemplateStore
 
@@ -130,3 +131,35 @@ def test_add_invalid_shorthand_reports_error() -> None:
     result = CliRunner().invoke(app, ["add", "gh:foo"])
     assert result.exit_code == 1
     assert "Invalid gh: shorthand" in result.output
+
+
+def test_add_local_template_under_given_name(
+    tmp_path: Path, store: TemplateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(context, "store", store)
+    src = _make_template(tmp_path, "src")
+    result = CliRunner().invoke(app, ["add", str(src), "--name", "python"])
+    assert result.exit_code == 0
+    assert (store._dir / "python" / "devcontainer.json").exists()
+
+
+def test_add_name_for_directory_of_templates_is_rejected(
+    tmp_path: Path, store: TemplateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(context, "store", store)
+    src = tmp_path / "src"
+    src.mkdir()
+    _make_template(src, "python")
+    result = CliRunner().invoke(app, ["add", str(src), "--name", "x"])
+    assert result.exit_code == 1
+    assert "--name cannot be used" in result.output
+
+
+def test_add_ref_for_local_source_is_rejected(
+    tmp_path: Path, store: TemplateStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(context, "store", store)
+    src = _make_template(tmp_path, "python")
+    result = CliRunner().invoke(app, ["add", str(src), "--ref", "main"])
+    assert result.exit_code == 1
+    assert "--ref and --subpath only apply" in result.output
